@@ -1,6 +1,6 @@
 /* Вкладки проектов и канбан по группам docs/issues: карточка свёрнута до номера, названия, трудности и отметок */
 :root {
-	--bg: #f7f6f2; --surface: #ffffff; --sunk: #efede6; --fg: #1c1f27; --muted: #5a5f6c; --line: #cfc9bc; --faint: #ddd8cc;
+	--bg: #f7f6f2; --surface: #ffffff; --sunk: #e8e4d9; --fg: #1c1f27; --muted: #5a5f6c; --line: #cfc9bc; --faint: #ddd8cc;
 	--hi: #c3161c; --mid: #c08a14; --done: #2e7d46; --accent: #2f5d8a;
 	--badge-work: #2f5d8a; --badge-check: #1d63d6; --badge-pr: #2e7d46; --badge-owner: #96680c;
 	--on: var(--fg); --on-ink: var(--bg); /* нажатая кнопка переключателя */
@@ -9,11 +9,11 @@
 	--body: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 	--mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
-/* Тёмная тема — по дизайну _soundproof: почти чёрный фон, графитовые панели, жёлтый акцент, острые углы; без неонового свечения.
+/* Тёмная тема — по дизайну _soundproof: графитовые фон и панели, полоса вкладок и колонки почти чёрные (утоплены, как в светлой), жёлтый акцент, острые углы; без неонового свечения.
    Тему выбирает меню окна: основной процесс задаёт nativeTheme.themeSource, от него зависит prefers-color-scheme. */
 @media (prefers-color-scheme: dark) {
 	:root {
-		--bg: #0c0e11; --surface: #1b2027; --sunk: #14181d; --fg: #f2f1ec; --muted: #a4abb5; --line: #2a313a; --faint: #232931;
+		--bg: #191e24; --surface: #20262e; --sunk: #090b0d; --fg: #f2f1ec; --muted: #a4abb5; --line: #3a434f; --faint: #2f3742;
 		--hi: #f0646a; --mid: #f0913a; --done: #5bc27f; --accent: #ffc21a;
 		--badge-work: #3a6ea5; --badge-check: #2f6fe0;
 		--on: #ffc21a; --on-ink: #1a1400;
