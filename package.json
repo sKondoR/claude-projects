@@ -19,6 +19,7 @@
 		"electron": "^45.3.4",
 		"electron-builder": "^26.18.0",
 		"electron-vite": "^6.0.0",
+		"playwright-core": "1.48.2",
 		"svelte": "^5.57.3",
 		"svelte-check": "^4.7.8",
 		"typescript": "^6.0.3",

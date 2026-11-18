@@ -14,7 +14,7 @@ describe('findOverlaps', () => {
 		const text = '# Проект\n\nКоманды.\n\nНовую задачу дописывай в конец подходящего раздела или новым разделом в конец файла.\n';
 		const [o, ...rest] = findOverlaps(RULES, [{ file: 'CLAUDE.md', text }]);
 		expect(rest).toEqual([]);
-		expect(o).toMatchObject({ file: 'CLAUDE.md', line: 5 });
+		expect(o).toMatchObject({ file: 'CLAUDE.md', line: 5, ruleLine: 3 });
 		expect(o?.rule).toMatch(/^Новую задачу/);
 		expect(o?.score).toBeGreaterThanOrEqual(0.6);
 	});

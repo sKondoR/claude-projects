@@ -10,6 +10,7 @@ export interface Settings {
 	rulesDir: string;
 	reviewed: Record<string, string[]>; // проект → ключи пар «Проверено»
 	autostart: boolean; // автозапуск уже включали: пользователь мог выключить его в Windows
+	theme?: 'light' | 'dark'; // нет — тема как в Windows, пока пользователь не выбрал её в меню
 }
 
 const file = () => path.join(app.getPath('userData'), 'settings.json');

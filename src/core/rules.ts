@@ -1,12 +1,12 @@
 // Управляемые блоки: текст между <!-- имя:start хеш --> и <!-- имя:end --> пишет приложение, остальное не трогает.
 import { eolOf, hash, lf, trimBlankEnd, withEol } from './text';
 
+export const RULES_SOURCE = 'issues-rules.md'; // общие правила в папке эталона
 export const CLAUDE_FILE = 'CLAUDE.md';
 export const ISSUES_FILE = 'CLAUDE-ISSUES.md';
+export const LOCAL_FILE = 'CLAUDE-ISSUES-LOCAL.md'; // правила проекта: приложение создаёт файл один раз
 export const RULES_BLOCK = 'issues-rules';
 export const POINTER_BLOCK = 'issues-pointer';
-const PROJECT_SECTION = '## Правила проекта';
-const PROJECT_HINT = '<!-- Правила этого проекта: буквы номеров, особые форматы групп. Приложение этот раздел не меняет. -->';
 
 const startRe = (name: string) => new RegExp(`^<!-- ${name}:start(?: (\\S+))? -->$`);
 const endLine = (name: string) => `<!-- ${name}:end -->`;
@@ -43,14 +43,9 @@ export function upsertBlock(text: string | null, name: string, content: string, 
 	return withEol(out.join('\n'), eol);
 }
 
-// CLAUDE-ISSUES.md: общие правила наверху, ниже — раздел правил проекта.
-// Блока и раздела ещё нет (новый файл или файл, написанный до приложения): прежний текст файла уходит в раздел проекта.
-export function issuesFileText(existing: string | null, rules: string): string {
-	const known = existing?.trim() && (blockRange(existing, RULES_BLOCK) || lf(existing).split('\n').includes(PROJECT_SECTION));
-	if (known) return upsertBlock(existing, RULES_BLOCK, rules, 'top');
-	const old = existing?.trim() ? `\n${lf(existing)}` : '';
-	return withEol(upsertBlock(`${PROJECT_SECTION}\n\n${PROJECT_HINT}\n${old}`, RULES_BLOCK, rules, 'top'), eolOf(existing));
-}
+// CLAUDE-ISSUES.md: блок общих правил наверху. Правила проекта — в CLAUDE-ISSUES-LOCAL.md;
+// прежний текст файла (раздел «Правила проекта» до LOCAL) остаётся под блоком как есть.
+export const issuesFileText = (existing: string | null, rules: string) => upsertBlock(existing, RULES_BLOCK, rules, 'top');
 
 // CLAUDE.md: ссылка на CLAUDE-ISSUES.md в конце файла.
 export const claudeMdText = (existing: string | null, pointer: string) => upsertBlock(existing, POINTER_BLOCK, pointer, 'bottom');

@@ -39,29 +39,15 @@ describe('upsertBlock', () => {
 });
 
 describe('файлы проекта', () => {
-	it('новый CLAUDE-ISSUES.md: общие правила и раздел проекта', () => {
-		const text = issuesFileText(null, 'Общее');
-		expect(text.startsWith('<!-- issues-rules:start')).toBe(true);
-		expect(text).toContain('\n## Правила проекта\n');
-		expect(blockRange(text, 'issues-rules')).toEqual([0, 2]);
+	it('новый CLAUDE-ISSUES.md — только блок общих правил: правила проекта лежат в CLAUDE-ISSUES-LOCAL.md', () => {
+		expect(issuesFileText(null, 'Общее')).toBe(`<!-- issues-rules:start ${hash('Общее')} -->\nОбщее\n<!-- issues-rules:end -->\n`);
 	});
 
-	it('обновление CLAUDE-ISSUES.md не трогает раздел проекта', () => {
-		const text = issuesFileText(null, 'Общее') + 'Буквы: К, С.\n';
-		expect(issuesFileText(text, 'Новое общее')).toMatch(/Новое общее[\s\S]*Буквы: К, С\./);
-	});
-
-	it('прежний CLAUDE-ISSUES.md без блока: прежний текст уходит в раздел проекта', () => {
-		const text = issuesFileText('Буквы: К, С.\r\n', 'Общее');
-		expect(lf(text)).toMatch(/^<!-- issues-rules:start \w+ -->\nОбщее\n<!-- issues-rules:end -->\n\n## Правила проекта\n\n<!--[^\n]*-->\n\nБуквы: К, С\.\n$/);
+	it('прежний текст CLAUDE-ISSUES.md остаётся под блоком', () => {
+		const text = issuesFileText('## Правила проекта\r\n\r\nБуквы: К, С.\r\n', 'Общее');
+		expect(lf(text)).toMatch(/^<!-- issues-rules:start \w+ -->\nОбщее\n<!-- issues-rules:end -->\n\n## Правила проекта\n\nБуквы: К, С\.\n$/);
 		expect(text).toContain('\r\n');
 		expect(issuesFileText(text, 'Новое')).toBe(text.replace(/start \w+ -->\r\nОбщее/, `start ${hash('Новое')} -->\r\nНовое`));
-	});
-
-	it('файл без блока, но с разделом проекта: раздел не задваивается', () => {
-		const text = issuesFileText('## Правила проекта\n\nБуквы: К.\n', 'Общее');
-		expect(text.match(/## Правила проекта/g)).toHaveLength(1);
-		expect(text).toMatch(/^<!-- issues-rules:start \w+ -->\nОбщее\n<!-- issues-rules:end -->\n\n## Правила проекта\n\nБуквы: К\.\n$/);
 	});
 
 	it('CLAUDE.md получает ссылку в конце', () => {

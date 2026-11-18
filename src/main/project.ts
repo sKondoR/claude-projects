@@ -8,7 +8,7 @@ import { closeCard, doneNote, moveCard } from '../core/edit';
 import { BASE_GROUPS, doneFileOf, isGroupFile, ISSUES_DIR, RESOLVED_DIR } from '../core/groups';
 import { findOverlaps, type Overlap } from '../core/overlap';
 import { idsOf } from '../core/parse';
-import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, POINTER_BLOCK, RULES_BLOCK } from '../core/rules';
+import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, LOCAL_FILE, POINTER_BLOCK, RULES_SOURCE } from '../core/rules';
 import { hash } from '../core/text';
 import type { Mark, MdFile } from '../core/types';
 import { parseWorktrees, type WorktreeRef } from '../core/worktrees';
@@ -21,6 +21,7 @@ export interface Rules {
 	rules: string;
 	pointer: string;
 	script: string;
+	local: string; // начальный текст CLAUDE-ISSUES-LOCAL.md
 }
 
 export function loadRules(dir: string): Rules {
@@ -29,7 +30,7 @@ export function loadRules(dir: string): Rules {
 		if (text === null) throw new Error(`Нет файла эталона ${path.join(dir, f)}`);
 		return text;
 	};
-	return { rules: read('issues-rules.md'), pointer: read('pointer.md'), script: read(SCRIPT_FILE) };
+	return { rules: read(RULES_SOURCE), pointer: read('pointer.md'), script: read(SCRIPT_FILE), local: read('local.md') };
 }
 
 // Недостающие файлы базового набора групп. Существующие файлы задач не трогаются.
@@ -53,6 +54,7 @@ export function syncRules(root: string, rules: Rules): string[] {
 	sync(ISSUES_FILE, (old) => issuesFileText(old, rules.rules));
 	sync(CLAUDE_FILE, (old) => claudeMdText(old, rules.pointer));
 	sync(path.join(ISSUES_DIR, SCRIPT_FILE), () => rules.script);
+	sync(LOCAL_FILE, (old) => old ?? rules.local); // правила проекта: только создать, если файла нет
 	return errors;
 }
 
@@ -132,29 +134,24 @@ export function projectBoard(root: string, worktrees: WorktreeRef[]): BoardGroup
 	return buildBoard({ groups: groupsOf(root), closed: closedOf(root), marks, worktrees: wts }).groups;
 }
 
-// Пересечения зависят только от трёх файлов правил и эталона: между их изменениями ответ берётся из кеша.
-const OVERLAP_FILES: [string, string | null][] = [
-	[CLAUDE_FILE, POINTER_BLOCK],
-	[ISSUES_FILE, RULES_BLOCK],
-	[path.join(ISSUES_DIR, CLAUDE_FILE), null],
-];
+// Пересечения общих правил с собственным текстом корневого CLAUDE.md проекта. Блок-ссылку вставило приложение,
+// а правила, подключённые через неё, скопированы из эталона: их не сравниваем.
+// Ответ зависит только от CLAUDE.md и эталона: между их изменениями он берётся из кеша.
 const overlapCache = new Map<string, { stamp: string; overlaps: Overlap[] }>();
 
 export function projectOverlaps(root: string, rules: Rules, reviewed: string[]): Overlap[] {
-	const stamp = [hash(rules.rules), ...OVERLAP_FILES.map(([f]) => fs.statSync(path.join(root, f), { throwIfNoEntry: false })?.mtimeMs ?? '-')].join(':');
+	const file = path.join(root, CLAUDE_FILE);
+	const stamp = `${hash(rules.rules)}:${fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? '-'}`;
 	let entry = overlapCache.get(root);
 	if (entry?.stamp !== stamp) {
-		const sources = OVERLAP_FILES.flatMap(([file, block]) => {
-			const text = readText(path.join(root, file));
-			if (text === null) return [];
-			let skip: [number, number] | undefined;
-			try {
-				skip = block ? (blockRange(text, block) ?? undefined) : undefined;
-			} catch {
-				// Сломанный маркер покажет syncRules; здесь сравниваем весь файл.
-			}
-			return [{ file: file.split(path.sep).join('/'), text, skip }];
-		});
+		const text = readText(file);
+		let skip: [number, number] | undefined;
+		try {
+			skip = text === null ? undefined : (blockRange(text, POINTER_BLOCK) ?? undefined);
+		} catch {
+			// Сломанный маркер покажет syncRules; здесь сравниваем весь файл.
+		}
+		const sources = text === null ? [] : [{ file: CLAUDE_FILE, text, skip }];
 		overlapCache.set(root, (entry = { stamp, overlaps: findOverlaps(rules.rules, sources) }));
 	}
 	const done = new Set(reviewed);

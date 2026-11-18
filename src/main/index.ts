@@ -1,11 +1,11 @@
 // Основной процесс: окно, трей, автозапуск, проекты и слежение за их файлами.
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
 import icon from '../../resources/icon.png?asset';
 import { DOCS_DIR, isTaskDocsPath } from '../core/groups';
 import { isViewable, resolveLink } from '../core/links';
-import { CLAUDE_FILE, ISSUES_FILE } from '../core/rules';
+import { CLAUDE_FILE, ISSUES_FILE, RULES_SOURCE } from '../core/rules';
 import type { WorktreeRef } from '../core/worktrees';
 import type { AppState, ProjectView } from '../shared/api';
 import {
@@ -144,6 +144,7 @@ function createWindow(show: boolean) {
 		height: 900,
 		show: false,
 		autoHideMenuBar: true,
+		backgroundColor: nativeTheme.shouldUseDarkColors ? '#0c0e11' : '#f7f6f2', // --bg тем из app.css до первой отрисовки: окно не мигает
 		title: 'Claude Projects',
 		icon,
 		webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true },
@@ -251,6 +252,14 @@ function ipc() {
 		saveSettings(settings);
 		syncRulesDir(true);
 	});
+	ipcMain.handle('openRules', async () => {
+		await shell.openPath(path.join(settings.rulesDir, RULES_SOURCE));
+	});
+	// Тема окна — через nativeTheme: prefers-color-scheme окна следует themeSource, состояние слать не нужно.
+	ipcMain.handle('setTheme', (_e, dark: boolean) => {
+		settings.theme = nativeTheme.themeSource = dark ? 'dark' : 'light';
+		saveSettings(settings);
+	});
 	ipcMain.handle('copy', (_e, text: string) => clipboard.writeText(text));
 }
 
@@ -276,6 +285,7 @@ else {
 		}
 		// Окно — первым: доски проектов читаются после и приходят в окно сами.
 		ipc();
+		nativeTheme.themeSource = settings.theme ?? 'system';
 		createWindow(!process.argv.includes('--hidden'));
 		createTray();
 		syncRulesDir(true);

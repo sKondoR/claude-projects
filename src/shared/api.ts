@@ -27,6 +27,8 @@ export interface Api {
 	// Ссылка из карточки или файл проекта: http(s) — в браузере, путь от папки from внутри проекта — в программе Windows.
 	open(path: string, href: string, from: string): Promise<void>;
 	chooseRulesDir(): Promise<void>;
+	openRules(): Promise<void>; // файл общих правил в папке эталона — в программе Windows
+	setTheme(dark: boolean): Promise<void>;
 	copy(text: string): Promise<void>;
 	onState(cb: (state: AppState) => void): () => void;
 }

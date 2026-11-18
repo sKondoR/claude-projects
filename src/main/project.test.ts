@@ -27,8 +27,10 @@ describe('новый проект', () => {
 		expect(syncRules(root, rules)).toEqual([]);
 		expect(read('docs/issues/issues.md')).toBe('# Задачи\n');
 		expect(read('docs/issues/backlog.md')).toBe('# Бэклог\n');
-		expect(read('CLAUDE.md')).toMatch(/^# Проект\n\nКоманды\.\n\n<!-- issues-pointer:start \w+ -->\n[\s\S]*@CLAUDE-ISSUES\.md\n<!-- issues-pointer:end -->\n$/);
-		expect(read('CLAUDE-ISSUES.md')).toContain('## Правила проекта');
+		expect(read('CLAUDE.md')).toMatch(/^# Проект\n\nКоманды\.\n\n<!-- issues-pointer:start \w+ -->\n[\s\S]*@CLAUDE-ISSUES\.md\n@CLAUDE-ISSUES-LOCAL\.md\n<!-- issues-pointer:end -->\n$/);
+		expect(read('CLAUDE-ISSUES.md')).not.toContain('## Правила проекта');
+		expect(read('CLAUDE.md')).toContain('@CLAUDE-ISSUES-LOCAL.md');
+		expect(read('CLAUDE-ISSUES-LOCAL.md')).toBe(rules.local);
 		expect(read('docs/issues/issues-status.mjs')).toBe(rules.script);
 		expect(projectBoard(root, []).map((g) => g.key)).toEqual(['issues', 'security-issues', 'architecture-issues', 'other-issues', 'backlog']);
 	});
@@ -41,6 +43,13 @@ describe('новый проект', () => {
 		syncRules(root, { ...rules, rules: '# Учёт задач\n\nНовое правило.' });
 		expect(read('docs/issues/issues.md')).toBe('# Мои задачи\n\n' + card('С1'));
 		expect(read('CLAUDE-ISSUES.md')).toMatch(/Новое правило\.\n<!-- issues-rules:end -->[\s\S]*Буквы: С — сайт\.\n$/);
+	});
+
+	it('CLAUDE-ISSUES-LOCAL.md создаётся, только если его нет: правила проекта не затираются', () => {
+		write('CLAUDE-ISSUES-LOCAL.md', '# Правила проекта\n\nБуквы: С — сайт.\n');
+		syncRules(root, rules);
+		syncRules(root, { ...rules, local: 'Новый шаблон.\n' });
+		expect(read('CLAUDE-ISSUES-LOCAL.md')).toBe('# Правила проекта\n\nБуквы: С — сайт.\n');
 	});
 
 	it('сломанный маркер — сообщение, файл не меняется', () => {
@@ -157,5 +166,14 @@ describe('пересечения', () => {
 		const [o] = projectOverlaps(root, rules, []);
 		expect(o).toMatchObject({ file: 'CLAUDE.md', line: 3 });
 		expect(projectOverlaps(root, rules, [o!.key])).toEqual([]);
+	});
+
+	it('сравнивает только корневой CLAUDE.md: правила, подключённые из приложения, и прочие файлы не в счёт', () => {
+		const rule = rules.rules.split('\n').find((l) => l.startsWith('- Находки проверок'))!;
+		write('CLAUDE.md', '# Проект\n');
+		syncRules(root, rules);
+		fs.appendFileSync(path.join(root, 'CLAUDE-ISSUES.md'), `${rule}\n`);
+		write('docs/issues/CLAUDE.md', `# Старые правила\n\n${rule}\n`);
+		expect(projectOverlaps(root, rules, [])).toEqual([]);
 	});
 });

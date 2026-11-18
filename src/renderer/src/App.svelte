@@ -4,8 +4,10 @@
 	import type { BoardCard, BoardGroup } from '../../core/board';
 	import { ISSUES_DIR } from '../../core/groups';
 	import { DIFFICULTIES, RISK_LABELS } from '../../core/labels';
+	import { RULES_SOURCE } from '../../core/rules';
 	import type { AppState } from '../../shared/api';
 	import Card from './Card.svelte';
+	import Menu from './Menu.svelte';
 	import Steps from './Steps.svelte';
 
 	const api = window.api;
@@ -112,6 +114,7 @@
 	<button class="rules-dir" title="Папка эталона правил: {app.rulesDir}. Нажмите, чтобы выбрать другую" onclick={() => api.chooseRulesDir()}
 		>Правила: {app.rulesDir}</button
 	>
+	<Menu />
 </nav>
 
 {#if !project}
@@ -147,7 +150,7 @@
 			<i class="sep"></i><span>Трудность:</span>
 			{#each DIFFICULTIES as d, i (d)}<span><Steps level={i + 1} />{d.toLowerCase()}</span>{/each}
 			<i class="sep"></i><span>Риск:</span>
-			{#each Object.keys(RISK_LABELS) as r (r)}<span class="chip risk r{r}">{r}</span>{/each}
+			<span class="keys">{#each Object.entries(RISK_LABELS) as [r, label] (r)}<span class="chip risk r{r}" title={label}>{r}</span>{/each}</span>
 			<i class="sep"></i><span><span class="chip stage">этап N</span>ждёт этапа N</span>
 			<i class="sep"></i><span>Перетащите карточку в другую группу, чтобы перенести задачу</span>
 		</div>
@@ -171,7 +174,13 @@
 			</h2>
 			{#each project.overlaps as o (o.key)}
 				<div class="pair">
-					<p><b>Общее правило</b>{o.rule}</p>
+					<p>
+						<b
+							>Общее правило · <button class="link" title="Открыть общие правила для правки: {app.rulesDir}" onclick={() => api.openRules()}
+								>{RULES_SOURCE}</button
+							>, строка {o.ruleLine}</b
+						>{o.rule}
+					</p>
 					<p><b><a href={o.file} data-from=".">{o.file}</a>, строка {o.line}</b>{o.text}</p>
 					<button onclick={() => api.reviewed(project.path, o.key)}>Проверено</button>
 				</div>

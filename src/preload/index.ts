@@ -11,6 +11,8 @@ const api: Api = {
 	reviewed: (path, key) => ipcRenderer.invoke('reviewed', path, key),
 	open: (path, href, from) => ipcRenderer.invoke('open', path, href, from),
 	chooseRulesDir: () => ipcRenderer.invoke('chooseRulesDir'),
+	openRules: () => ipcRenderer.invoke('openRules'),
+	setTheme: (dark) => ipcRenderer.invoke('setTheme', dark),
 	copy: (text) => ipcRenderer.invoke('copy', text),
 	onState: (cb) => {
 		const listener = (_e: unknown, state: AppState) => cb(state);

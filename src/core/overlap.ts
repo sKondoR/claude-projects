@@ -4,6 +4,7 @@ import { hash, lf } from './text';
 export interface Overlap {
 	key: string; // отпечаток пары текстов: «Проверено» скрывает пару, пока оба текста не меняются
 	rule: string;
+	ruleLine: number; // строка правила в файле эталона, с 1
 	file: string;
 	line: number; // с 1
 	text: string;
@@ -64,7 +65,7 @@ export function findOverlaps(rules: string, sources: OverlapSource[]): Overlap[]
 		for (const u of units(src.text, src.skip)) {
 			for (const r of ruleUnits) {
 				const score = similarity(r.words, u.words);
-				if (score >= THRESHOLD) out.push({ key: hash(`${r.text}\n${u.text}`), rule: r.text, file: src.file, line: u.line, text: u.text, score });
+				if (score >= THRESHOLD) out.push({ key: hash(`${r.text}\n${u.text}`), rule: r.text, ruleLine: r.line, file: src.file, line: u.line, text: u.text, score });
 			}
 		}
 	}
