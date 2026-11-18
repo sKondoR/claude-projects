@@ -1,0 +1,21 @@
+appId: local.claude-projects
+productName: Claude Projects
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**
+  - package.json
+  - resources/**
+asarUnpack:
+  - resources/**
+extraResources:
+  - from: rules
+    to: rules
+win:
+  target: nsis
+  icon: resources/icon.png
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: claude-projects-setup-${version}.${ext}

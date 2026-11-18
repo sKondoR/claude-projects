@@ -1,0 +1,26 @@
+// Группы задач: файлы docs/issues/*.md. Базовый набор создаётся в новом проекте; другие файлы тоже становятся столбцами.
+export const BASE_GROUPS = [
+	{ file: 'issues.md', title: 'Задачи' },
+	{ file: 'security-issues.md', title: 'Безопасность' },
+	{ file: 'architecture-issues.md', title: 'Архитектура' },
+	{ file: 'other-issues.md', title: 'Прочее' },
+	{ file: 'backlog.md', title: 'Бэклог' },
+];
+const BACKLOG = 'backlog.md';
+const BASE_ORDER = BASE_GROUPS.map((g) => g.file).filter((f) => f !== BACKLOG);
+
+// docs/issues/CLAUDE.md — старые правила проекта, не группа задач.
+export const isGroupFile = (file: string) => file.endsWith('.md') && file !== 'CLAUDE.md';
+
+export const keyOf = (file: string) => file.replace(/\.md$/, '');
+
+// Базовые по порядку набора, затем прочие по алфавиту, бэклог последним.
+const rank = (f: string) => (f === BACKLOG ? Infinity : BASE_ORDER.includes(f) ? BASE_ORDER.indexOf(f) : BASE_ORDER.length);
+export const compareGroups = (a: string, b: string) => rank(a) - rank(b) || a.localeCompare(b);
+export const orderGroups = (files: string[]) => [...files].sort(compareGroups);
+
+// Файл закрытых задач в docs/resolved: бэклог закрывается вместе с основными задачами.
+export const doneFileOf = (file: string) => (file === BACKLOG ? 'issues-DONE.md' : file.replace(/\.md$/, '-DONE.md'));
+
+// Название столбца: первая строка «# …» файла, иначе имя файла.
+export const titleOf = (text: string, file: string) => /^# (.+)$/m.exec(text)?.[1]?.trim() ?? keyOf(file);
