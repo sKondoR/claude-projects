@@ -3,25 +3,19 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { buildBoard, type BoardGroup, type Worktree } from '../core/board';
+import { buildBoard, latestMarks, type BoardGroup, type Worktree } from '../core/board';
 import { closeCard, doneNote, moveCard } from '../core/edit';
-import { BASE_GROUPS, doneFileOf, isGroupFile } from '../core/groups';
+import { BASE_GROUPS, doneFileOf, isGroupFile, ISSUES_DIR, RESOLVED_DIR } from '../core/groups';
 import { findOverlaps, type Overlap } from '../core/overlap';
 import { idsOf } from '../core/parse';
-import { blockRange, claudeMdText, ISSUES_FILE, issuesFileText, POINTER_BLOCK, RULES_BLOCK } from '../core/rules';
+import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, POINTER_BLOCK, RULES_BLOCK } from '../core/rules';
 import { hash } from '../core/text';
 import type { Mark, MdFile } from '../core/types';
+import { parseWorktrees, type WorktreeRef } from '../core/worktrees';
 import { listMd, readText, writeAtomic, writeIfChanged } from './files';
 
-const ISSUES = 'issues';
-const RESOLVED = 'resolved';
-export const ISSUES_DIR = path.join('docs', ISSUES);
-const RESOLVED_DIR = path.join('docs', RESOLVED);
 const STATUS_FILE = 'status.json';
 const SCRIPT_FILE = 'issues-status.mjs';
-
-// Путь из события слежения за docs/: файлы задач и закрытых задач.
-export const isTaskDocsPath = (rel: string) => [ISSUES, RESOLVED].includes(rel.split(/[\\/]/)[0]!);
 
 export interface Rules {
 	rules: string;
@@ -57,7 +51,7 @@ export function syncRules(root: string, rules: Rules): string[] {
 		}
 	};
 	sync(ISSUES_FILE, (old) => issuesFileText(old, rules.rules));
-	sync('CLAUDE.md', (old) => claudeMdText(old, rules.pointer));
+	sync(CLAUDE_FILE, (old) => claudeMdText(old, rules.pointer));
 	sync(path.join(ISSUES_DIR, SCRIPT_FILE), () => rules.script);
 	return errors;
 }
@@ -102,42 +96,47 @@ function writeMarks(root: string, list: Mark[]) {
 	else fs.rmSync(statusFile(root), { force: true });
 }
 
-export interface WorktreeRef {
-	path: string;
-	branch: string;
-}
-
-const run = promisify(execFile);
+const execFileAsync = promisify(execFile);
 export const samePath = (a: string, b: string) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
-// Другие рабочие копии репозитория проекта (git worktree). Не git — пустой список без запуска git.
+// Ближайшая папка с .git от root вверх; null — проект не в git, и git не запускается.
+function gitTopOf(root: string): string | null {
+	for (let dir = path.resolve(root); ; dir = path.dirname(dir)) {
+		if (fs.existsSync(path.join(dir, '.git'))) return dir;
+		if (path.dirname(dir) === dir) return null;
+	}
+}
+
+// Другие рабочие копии репозитория проекта (git worktree). Проект может быть подпапкой репозитория:
+// в каждой копии берётся та же подпапка; копии, где её нет (старая ветка), доске не нужны.
 export async function listWorktrees(root: string): Promise<WorktreeRef[]> {
-	if (!fs.existsSync(path.join(root, '.git'))) return [];
+	const top = gitTopOf(root);
+	if (!top) return [];
 	try {
-		const { stdout } = await run('git', ['-C', root, 'worktree', 'list', '--porcelain'], { windowsHide: true });
-		const out: WorktreeRef[] = [];
-		for (const entry of stdout.split(/\n\n/)) {
-			const dir = /^worktree (.+)$/m.exec(entry)?.[1]?.trim();
-			const branch = /^branch refs\/heads\/(.+)$/m.exec(entry)?.[1]?.trim();
-			if (dir && branch && !samePath(dir, root)) out.push({ path: path.normalize(dir), branch });
-		}
-		return out;
+		const { stdout } = await execFileAsync('git', ['-C', root, 'worktree', 'list', '--porcelain', '-z'], { windowsHide: true });
+		const sub = path.relative(top, root);
+		return parseWorktrees(stdout)
+			.map((w) => ({ ...w, path: path.join(w.path, sub) }))
+			.filter((w) => !samePath(w.path, root) && fs.existsSync(w.path));
 	} catch {
 		return [];
 	}
 }
 
+// Корень проекта и его worktree: у каждой копии свои файлы задач и свой status.json.
+const copiesOf = (root: string, worktrees: WorktreeRef[]) => [root, ...worktrees.map((w) => w.path)];
+
 export function projectBoard(root: string, worktrees: WorktreeRef[]): BoardGroup[] {
 	const wts: Worktree[] = worktrees.map((w) => ({ branch: w.branch, groups: groupsOf(w.path), closed: closedOf(w.path) }));
-	const marks = [root, ...worktrees.map((w) => w.path)].flatMap(readMarks);
+	const marks = copiesOf(root, worktrees).flatMap(readMarks);
 	return buildBoard({ groups: groupsOf(root), closed: closedOf(root), marks, worktrees: wts }).groups;
 }
 
 // Пересечения зависят только от трёх файлов правил и эталона: между их изменениями ответ берётся из кеша.
 const OVERLAP_FILES: [string, string | null][] = [
-	['CLAUDE.md', POINTER_BLOCK],
+	[CLAUDE_FILE, POINTER_BLOCK],
 	[ISSUES_FILE, RULES_BLOCK],
-	[path.join(ISSUES_DIR, 'CLAUDE.md'), null],
+	[path.join(ISSUES_DIR, CLAUDE_FILE), null],
 ];
 const overlapCache = new Map<string, { stamp: string; overlaps: Overlap[] }>();
 
@@ -201,12 +200,8 @@ export function moveTask(root: string, id: string, toGroup: string): string | nu
 export function closeTask(root: string, id: string, worktrees: WorktreeRef[]): string | null {
 	const from = sourceOf(root, id);
 	if (!from) return `Нет открытой задачи ${id}`;
-	const copies = [root, ...worktrees.map((w) => w.path)].map((dir) => ({ dir, marks: readMarks(dir) }));
-	const latest = copies
-		.flatMap((c) => c.marks)
-		.filter((m) => m.id === id)
-		.reduce<Mark | undefined>((a, m) => (!a || a.at < m.at ? m : a), undefined);
-	const note = doneNote(new Date(), latest?.url);
+	const copies = copiesOf(root, worktrees).map((dir) => ({ dir, marks: readMarks(dir) }));
+	const note = doneNote(new Date(), latestMarks(copies.flatMap((c) => c.marks)).get(id)?.url);
 	const done = path.join(root, RESOLVED_DIR, doneFileOf(path.basename(from)));
 	const error = editPair(from, done, (src, dst) => closeCard(src, dst, id, note));
 	if (!error) for (const c of copies) if (c.marks.some((m) => m.id === id)) writeMarks(c.dir, c.marks.filter((m) => m.id !== id));

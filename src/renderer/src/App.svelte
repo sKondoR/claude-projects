@@ -2,13 +2,13 @@
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { BoardCard, BoardGroup } from '../../core/board';
-	import { DIFFICULTIES as DIFFS } from '../../core/parse';
+	import { ISSUES_DIR } from '../../core/groups';
+	import { DIFFICULTIES, RISK_LABELS } from '../../core/labels';
 	import type { AppState } from '../../shared/api';
 	import Card from './Card.svelte';
 	import Steps from './Steps.svelte';
 
 	const api = window.api;
-	const ISSUES_DIR = 'docs/issues';
 
 	let app = $state<AppState>({ projects: [], active: null, rulesDir: '' });
 	const project = $derived(app.projects.find((p) => p.path === app.active) ?? app.projects[0]);
@@ -28,7 +28,7 @@
 			// Без хранилища фильтры живут до перезапуска.
 		}
 	};
-	let diff = $state(saved('issues-diff', ''));
+	let difficulty = $state(saved('issues-diff', ''));
 	let ownerOnly = $state(saved('issues-owner', false));
 	let stage = $state(saved('issues-stage', ''));
 	let folds = $state<Record<string, Record<string, boolean>>>(saved('issues-fold', {}));
@@ -56,7 +56,7 @@
 	const stages = $derived([...new Set(cards.map((c) => c.stage).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })));
 	// Этапа из фильтра нет в этом проекте — фильтр не действует; в проекте с этим этапом он снова работает.
 	const activeStage = $derived(stages.includes(stage) ? stage : '');
-	const shown = (c: BoardCard) => (!diff || c.difficulty === diff) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage);
+	const shown = (c: BoardCard) => (!difficulty || c.difficulty === difficulty) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage);
 
 	async function act(run: Promise<string | null>) {
 		const error = await run;
@@ -135,8 +135,8 @@
 				{/each}
 			</div>
 			<div class="seg" role="group" aria-label="Трудность">
-				{#each ['', ...DIFFS] as d, i (d)}
-					<button aria-pressed={d === diff} onclick={() => save('issues-diff', (diff = d))}>{#if d}<Steps level={i} />{/if}{d || 'Все'}</button>
+				{#each ['', ...DIFFICULTIES] as d, i (d)}
+					<button aria-pressed={d === difficulty} onclick={() => save('issues-diff', (difficulty = d))}>{#if d}<Steps level={i} />{/if}{d || 'Все'}</button>
 				{/each}
 			</div>
 		</div>
@@ -145,9 +145,9 @@
 				><i class="bar" style="background:var(--mid)"></i>средний</span
 			><span><i class="bar" style="background:var(--line)"></i>низкий</span>
 			<i class="sep"></i><span>Трудность:</span>
-			{#each DIFFS as d, i (d)}<span><Steps level={i + 1} />{d.toLowerCase()}</span>{/each}
+			{#each DIFFICULTIES as d, i (d)}<span><Steps level={i + 1} />{d.toLowerCase()}</span>{/each}
 			<i class="sep"></i><span>Риск:</span>
-			{#each ['0', '1', '2'] as r (r)}<span class="chip risk r{r}">{r}</span>{/each}
+			{#each Object.keys(RISK_LABELS) as r (r)}<span class="chip risk r{r}">{r}</span>{/each}
 			<i class="sep"></i><span><span class="chip stage">этап N</span>ждёт этапа N</span>
 			<i class="sep"></i><span>Перетащите карточку в другую группу, чтобы перенести задачу</span>
 		</div>

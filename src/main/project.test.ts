@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeTask, createBaseGroups, loadRules, moveTask, projectBoard, projectOverlaps, syncRules } from './project';
+import { closeTask, createBaseGroups, listWorktrees, loadRules, moveTask, projectBoard, projectOverlaps, syncRules } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
@@ -126,6 +126,27 @@ describe('скрипт отметок', () => {
 		expect(status('Х1', 'work')).toMatch(/Нет открытой задачи Х1/);
 		expect(status('С1', 'pr', 'javascript:alert(1)')).toMatch(/https:\/\/github\.com/);
 	});
+});
+
+describe('worktree', () => {
+	it('проект в подпапке репозитория: та же подпапка в каждой копии, копия без ветки тоже видна', async () => {
+		const repo = path.join(root, 'repo');
+		const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'pipe' });
+		fs.mkdirSync(path.join(repo, 'app'), { recursive: true });
+		git('init', '-q', '-b', 'main');
+		git('commit', '-q', '--allow-empty', '-m', 'без app');
+		git('worktree', 'add', '-q', '-b', 'old', path.join(root, 'wt0'));
+		fs.writeFileSync(path.join(repo, 'app', 'a.md'), 'a');
+		git('add', 'app/a.md');
+		git('commit', '-q', '-m', 'app');
+		git('worktree', 'add', '-q', '-b', 'feat', path.join(root, 'wt 1 Ж'));
+		git('worktree', 'add', '-q', '--detach', path.join(root, 'wt2'));
+		const list = await listWorktrees(path.join(repo, 'app'));
+		// wt0 — ветка без папки app: её нет на доске.
+		expect(list.map((w) => path.relative(root, w.path))).toEqual([path.join('wt 1 Ж', 'app'), path.join('wt2', 'app')]);
+		expect(list.map((w) => w.branch)).toEqual(['feat', expect.stringMatching(/^[0-9a-f]{7}$/)]);
+		expect(await listWorktrees(path.join(root, 'нет-git'))).toEqual([]);
+	}, 30_000); // семь запусков git на Windows дольше 5 с по умолчанию
 });
 
 describe('пересечения', () => {

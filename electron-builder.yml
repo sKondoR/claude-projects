@@ -9,9 +9,6 @@ files:
   - resources/**
 asarUnpack:
   - resources/**
-extraResources:
-  - from: rules
-    to: rules
 win:
   target: nsis
   icon: resources/icon.png

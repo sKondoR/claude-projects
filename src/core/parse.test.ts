@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ownerLabel, parseGroup } from './parse';
+import { ownerLabel } from './labels';
+import { idsOf, parseGroup } from './parse';
 
 const FILE = `# Задачи
 
@@ -93,6 +94,10 @@ describe('parseGroup', () => {
 			['А2', 'Р'],
 		]);
 		expect(cards[0]?.body).toBe('```bash\n# установка\n## шаг\n```\n\nКонец.');
+	});
+
+	it('номера задач: заголовок в блоке кода — не задача', () => {
+		expect(idsOf('### А1 · X\n\n```md\n### А9 · пример\n```\n\n### А2 · Y\n')).toEqual(['А1', 'А2']);
 	});
 
 	it('незакрытый блок кода не поглощает следующие задачи', () => {

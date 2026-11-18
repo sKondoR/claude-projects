@@ -3,11 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, Tray } from 'electron';
 import icon from '../../resources/icon.png?asset';
+import { DOCS_DIR, isTaskDocsPath } from '../core/groups';
+import { isViewable, resolveLink } from '../core/links';
+import { CLAUDE_FILE, ISSUES_FILE } from '../core/rules';
+import type { WorktreeRef } from '../core/worktrees';
 import type { AppState, ProjectView } from '../shared/api';
 import {
 	closeTask,
 	createBaseGroups,
-	isTaskDocsPath,
 	listWorktrees,
 	loadRules,
 	moveTask,
@@ -16,16 +19,15 @@ import {
 	samePath,
 	syncRules,
 	type Rules,
-	type WorktreeRef,
 } from './project';
 import { loadSettings, saveSettings, type Settings } from './store';
 import { watch } from './watch';
 
+// Эталон правил по умолчанию: папка rules репозитория приложения, из которого его собрали (Q17).
+// Копии в установщике нет: она устаревала бы и молча писала старые правила в проекты.
 declare const __RULES_DIR__: string;
-
-// Эталон правил: папка rules репозитория приложения, из которой его собрали; если её нет — копия в сборке.
-const defaultRulesDir = () => (fs.existsSync(__RULES_DIR__) ? __RULES_DIR__ : path.join(process.resourcesPath, 'rules'));
 const WORKTREE_REFRESH_MS = 60_000;
+const RULES_DIR_CHECK_MS = 60_000;
 
 let settings: Settings;
 let rules: Rules | null = null;
@@ -41,8 +43,6 @@ interface Live {
 }
 const live = new Map<string, Live>();
 
-const nameOf = (p: string) => path.basename(p);
-
 function refresh(root: string) {
 	const p = live.get(root);
 	if (!p) return;
@@ -54,7 +54,7 @@ function refresh(root: string) {
 		notices.push(`Не удалось прочитать задачи: ${(e as Error).message}`);
 	}
 	const overlaps = rules ? projectOverlaps(root, rules, settings.reviewed[root] ?? []) : [];
-	p.view = { path: root, name: nameOf(root), groups, overlaps, notices };
+	p.view = { path: root, name: path.basename(root), groups, overlaps, notices };
 	push();
 }
 
@@ -73,9 +73,9 @@ function rewatch(root: string) {
 	const p = live.get(root);
 	if (!p) return;
 	p.unwatch();
-	const docs = (dir: string) => ({ dir: path.join(dir, 'docs'), recursive: true, accept: isTaskDocsPath });
+	const docs = (dir: string) => ({ dir: path.join(dir, DOCS_DIR), recursive: true, accept: isTaskDocsPath });
 	p.unwatch = watch(
-		[{ dir: root, recursive: false, accept: (f) => f === 'CLAUDE.md' || f === 'CLAUDE-ISSUES.md' }, docs(root), ...p.worktrees.map((w) => docs(w.path))],
+		[{ dir: root, recursive: false, accept: (f) => f === CLAUDE_FILE || f === ISSUES_FILE }, docs(root), ...p.worktrees.map((w) => docs(w.path))],
 		() => refresh(root),
 	);
 }
@@ -120,9 +120,17 @@ function reloadRules() {
 }
 
 let unwatchRules = () => {};
-function watchRules() {
+let rulesDirFound: boolean | undefined;
+
+// Слежение и чтение эталона заново — при запуске, выборе папки и когда папка пропала или появилась.
+// Сетевой или USB-диск пропадает без события слежения, поэтому наличие папки сверяется раз в минуту.
+function syncRulesDir(force: boolean) {
+	const found = fs.existsSync(settings.rulesDir);
+	if (!force && found === rulesDirFound) return;
+	rulesDirFound = found;
 	unwatchRules();
 	unwatchRules = watch([{ dir: settings.rulesDir, recursive: false }], reloadRules);
+	reloadRules();
 }
 
 function persist() {
@@ -184,15 +192,6 @@ function createTray() {
 	tray.on('click', showWindow);
 }
 
-// Путь внутри проекта: ссылка из карточки не выводит за его пределы.
-function insideProject(root: string, target: string) {
-	const rel = path.relative(root, target);
-	return !!rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
-}
-
-// Файлы, которые Windows откроет программой просмотра, а не запустит. Остальные (.bat, .exe, .js, …) показываются в Проводнике.
-const VIEWABLE = new Set(['.md', '.txt', '.log', '.json', '.yml', '.yaml', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
-
 function ipc() {
 	ipcMain.handle('state', () => state());
 	ipcMain.handle('addProject', async () => {
@@ -236,19 +235,13 @@ function ipc() {
 		refresh(root);
 	});
 	ipcMain.handle('open', async (_e, root: string, href: string, from: string) => {
-		if (/^https?:\/\//.test(href)) return void shell.openExternal(href);
-		if (!live.has(root) || /^[a-z]+:/i.test(href)) return;
-		let file = href.split('#')[0]!;
-		try {
-			file = decodeURIComponent(file);
-		} catch {
-			// Неверная %-последовательность: имя файла берётся как написано.
-		}
-		const target = path.resolve(root, from, file);
-		const st = insideProject(root, target) ? fs.statSync(target, { throwIfNoEntry: false }) : undefined;
+		const link = live.has(root) ? resolveLink(root, from, href) : null;
+		if (!link) return;
+		if ('url' in link) return void shell.openExternal(link.url);
+		const st = fs.statSync(link.file, { throwIfNoEntry: false });
 		if (!st) return;
-		if (st.isDirectory() || VIEWABLE.has(path.extname(target).toLowerCase())) await shell.openPath(target);
-		else shell.showItemInFolder(target);
+		if (st.isDirectory() || isViewable(link.file)) await shell.openPath(link.file);
+		else shell.showItemInFolder(link.file);
 	});
 	ipcMain.handle('chooseRulesDir', async () => {
 		const res = await dialog.showOpenDialog(win!, { title: 'Папка эталона правил', defaultPath: settings.rulesDir, properties: ['openDirectory'] });
@@ -256,8 +249,7 @@ function ipc() {
 		if (res.canceled || !dir) return;
 		settings.rulesDir = dir;
 		saveSettings(settings);
-		watchRules();
-		reloadRules();
+		syncRulesDir(true);
 	});
 	ipcMain.handle('copy', (_e, text: string) => clipboard.writeText(text));
 }
@@ -269,8 +261,13 @@ else {
 	// Окно спрятано в трей — приложение работает дальше.
 	app.on('window-all-closed', () => {});
 	void app.whenReady().then(() => {
-		settings = loadSettings(defaultRulesDir());
-		if (!fs.existsSync(settings.rulesDir)) settings.rulesDir = defaultRulesDir();
+		// Папку эталона нет на месте (диск не подключён) — путь в настройках остаётся, на вкладках видна ошибка эталона.
+		settings = loadSettings(__RULES_DIR__);
+		// Прежние версии брали копию эталона из установщика: путь к ней больше никуда не ведёт.
+		if (samePath(settings.rulesDir, path.join(process.resourcesPath, 'rules'))) {
+			settings.rulesDir = __RULES_DIR__;
+			saveSettings(settings);
+		}
 		// Автозапуск включается один раз: если пользователь выключит его в Windows, приложение не включит снова.
 		if (app.isPackaged && !settings.autostart) {
 			app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
@@ -281,9 +278,9 @@ else {
 		ipc();
 		createWindow(!process.argv.includes('--hidden'));
 		createTray();
-		reloadRules();
-		watchRules();
+		syncRulesDir(true);
 		for (const root of settings.projects) openProject(root);
 		setInterval(() => settings.projects.forEach((r) => void updateWorktrees(r)), WORKTREE_REFRESH_MS);
+		setInterval(() => syncRulesDir(false), RULES_DIR_CHECK_MS);
 	});
 }

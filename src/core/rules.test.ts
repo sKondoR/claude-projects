@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blockRange, claudeMdText, issuesFileText, upsertBlock } from './rules';
-import { hash } from './text';
+import { hash, lf } from './text';
 
 describe('upsertBlock', () => {
 	it('ставит блок с хешем в начало или в конец', () => {
@@ -25,6 +25,14 @@ describe('upsertBlock', () => {
 		expect(upsertBlock(text, 'x', 'Новое', 'bottom')).not.toMatch(/[^\r]\n/);
 	});
 
+	it('отказывается, если блок правили руками: хеш в маркере не совпал', () => {
+		const text = upsertBlock('До\n', 'x', 'Правило', 'bottom').replace('Правило', 'Правило с правкой');
+		expect(() => upsertBlock(text, 'x', 'Новое', 'bottom')).toThrow(/изменён вручную/);
+		// Эталон догнал правку: блок не меняется, хеш в маркере обновляется.
+		expect(upsertBlock(text, 'x', 'Правило с правкой', 'bottom')).toBe(text.replace(hash('Правило'), hash('Правило с правкой')));
+		expect(upsertBlock('<!-- x:start -->\nСтарое\n<!-- x:end -->\n', 'x', 'Новое', 'top')).toContain('\nНовое\n');
+	});
+
 	it('отказывается, если нет закрывающего маркера', () => {
 		expect(() => upsertBlock('<!-- x:start 1 -->\nА\n', 'x', 'Б', 'top')).toThrow(/x:end/);
 	});
@@ -41,6 +49,19 @@ describe('файлы проекта', () => {
 	it('обновление CLAUDE-ISSUES.md не трогает раздел проекта', () => {
 		const text = issuesFileText(null, 'Общее') + 'Буквы: К, С.\n';
 		expect(issuesFileText(text, 'Новое общее')).toMatch(/Новое общее[\s\S]*Буквы: К, С\./);
+	});
+
+	it('прежний CLAUDE-ISSUES.md без блока: прежний текст уходит в раздел проекта', () => {
+		const text = issuesFileText('Буквы: К, С.\r\n', 'Общее');
+		expect(lf(text)).toMatch(/^<!-- issues-rules:start \w+ -->\nОбщее\n<!-- issues-rules:end -->\n\n## Правила проекта\n\n<!--[^\n]*-->\n\nБуквы: К, С\.\n$/);
+		expect(text).toContain('\r\n');
+		expect(issuesFileText(text, 'Новое')).toBe(text.replace(/start \w+ -->\r\nОбщее/, `start ${hash('Новое')} -->\r\nНовое`));
+	});
+
+	it('файл без блока, но с разделом проекта: раздел не задваивается', () => {
+		const text = issuesFileText('## Правила проекта\n\nБуквы: К.\n', 'Общее');
+		expect(text.match(/## Правила проекта/g)).toHaveLength(1);
+		expect(text).toMatch(/^<!-- issues-rules:start \w+ -->\nОбщее\n<!-- issues-rules:end -->\n\n## Правила проекта\n\nБуквы: К\.\n$/);
 	});
 
 	it('CLAUDE.md получает ссылку в конце', () => {

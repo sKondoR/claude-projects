@@ -1,9 +1,16 @@
+import { RISK_LABELS } from './labels';
 import type { Card } from './types';
 import { lf } from './text';
 
 export const CARD_RE = /^### (\S+) · (.+)$/;
-export const HEADING_RE = /^#{1,3} /;
+export const HEADING_RE = /^#{1,3} /; // конец задачи
+export const SECTION_END_RE = /^#{1,2} /; // конец раздела «## …»
+const SECTION_PREFIX = '## ';
 const FENCE_RE = /^\s*(`{3,}|~{3,})/;
+
+// Имя раздела из строки «## имя» или null.
+export const sectionOf = (line: string) => (line.startsWith(SECTION_PREFIX) ? line.slice(SECTION_PREFIX.length) : null);
+export const sectionLine = (name: string) => SECTION_PREFIX + name;
 
 // Строки блоков кода ``` и ~~~ вместе с ограждением: «# …» в них — не заголовок.
 // Незакрытый блок не считается кодом, иначе он поглотил бы все задачи ниже.
@@ -36,18 +43,6 @@ const FIELD_LINE = '**Приоритет:**';
 const OWNER = /^Уточнить у (.+)$/;
 const QUESTION = /^\*\*Вопрос (\S+?):\*\* (.*)$/;
 const RECOMMENDED = ' (рекомендуем)';
-
-// Значения полей, которые знает доска: трудность по возрастанию и риск — кому смотреть PR задачи.
-export const DIFFICULTIES = ['Лёгкая', 'Средняя', 'Сложная'];
-export const RISK_LABELS: Record<string, string> = {
-	'0': 'Риск 0: хватает ревью ИИ',
-	'1': 'Риск 1: человек читает сводку ревью',
-	'2': 'Риск 2: человек смотрит изменения сам',
-};
-
-// Метка пометки «Уточнить у владельца»: родительный падеж в именительный; незнакомое слово — как есть.
-const NOMINATIVE: Record<string, string> = { владельца: 'владелец', заказчика: 'заказчик', юриста: 'юрист' };
-export const ownerLabel = (owner: string) => NOMINATIVE[owner] ?? owner;
 
 export const isFieldLine = (line: string) => line.startsWith(FIELD_LINE);
 
@@ -110,14 +105,22 @@ export function parseGroup(text: string, group: string): Card[] {
 			continue;
 		}
 		const task = CARD_RE.exec(line);
+		const name = sectionOf(line);
 		if (task || HEADING_RE.test(line)) flush();
 		if (task) head = task;
-		else if (line.startsWith('## ')) section = line.slice(3);
+		else if (name !== null) section = name;
 		else if (head) lines.push(line);
 	}
 	flush();
 	return cards;
 }
 
-// Номера задач в тексте — для закрытых задач и проверки номера.
-export const idsOf = (text: string) => [...lf(text).matchAll(/^### (\S+) · /gm)].map((m) => m[1]!);
+// Номера задач в тексте — для закрытых задач и проверки номера. Заголовки в блоках кода не считаются, как в parseGroup.
+export function idsOf(text: string): string[] {
+	const lines = lf(text).split('\n');
+	const code = codeLines(lines);
+	return lines.flatMap((line, i) => {
+		const task = !code[i] && CARD_RE.exec(line);
+		return task ? [task[1]!] : [];
+	});
+}

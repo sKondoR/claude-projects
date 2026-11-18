@@ -20,7 +20,7 @@ Claude Projects — десктопное приложение (Windows) с до�
 ## Устройство
 
 ```
-src/core      чистая логика без Electron: разбор задач, перенос, закрытие, блоки правил, пересечения, markdown  ← тесты Vitest
+src/core      чистая логика без Electron: разбор задач, перенос, закрытие, блоки правил, пересечения, markdown, ссылки, worktree  ← тесты Vitest
 src/main      основной процесс: файлы проекта (project.ts), слежение (watch.ts), настройки, окно, трей, IPC
 src/preload   window.api для окна
 src/renderer  Svelte 5: вкладки, столбцы, карточки

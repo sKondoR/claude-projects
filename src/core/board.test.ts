@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildBoard } from './board';
 import { idsOf } from './parse';
-import { doneFileOf, orderGroups } from './groups';
+import { compareGroups, doneFileOf } from './groups';
 
 const card = (id: string, extra = '') => `### ${id} · Задача ${id}\n\n**Приоритет:** Средняя · **Риск:** 0${extra}\n\n`;
 
 describe('группы', () => {
 	it('базовый порядок, прочие по алфавиту, бэклог последним', () => {
 		const files = ['legal.md', 'backlog.md', 'issues-e2e.md', 'other-issues.md', 'issues.md', 'security-issues.md'];
-		expect(orderGroups(files)).toEqual(['issues.md', 'security-issues.md', 'other-issues.md', 'issues-e2e.md', 'legal.md', 'backlog.md']);
+		expect([...files].sort(compareGroups)).toEqual(['issues.md', 'security-issues.md', 'other-issues.md', 'issues-e2e.md', 'legal.md', 'backlog.md']);
 	});
 
 	it('файл закрытых задач группы', () => {

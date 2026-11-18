@@ -17,13 +17,11 @@ export function writeAtomic(file: string, text: string) {
 	fs.renameSync(tmp, file);
 }
 
-export function writeIfChanged(file: string, text: string): boolean {
-	if (readText(file) === text) return false;
-	writeAtomic(file, text);
-	return true;
+export function writeIfChanged(file: string, text: string) {
+	if (readText(file) !== text) writeAtomic(file, text);
 }
 
-export function listMd(dir: string, filter: (f: string) => boolean = () => true): string[] {
+export function listMd(dir: string, filter: (f: string) => boolean): string[] {
 	try {
 		return fs
 			.readdirSync(dir)

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { BoardCard, BoardGroup } from '../../core/board';
 	import { inline, markdown } from '../../core/markdown';
-	import { DIFFICULTIES, ownerLabel, RISK_LABELS } from '../../core/parse';
+	import { DIFFICULTIES, ownerLabel, RISK_LABELS } from '../../core/labels';
 	import type { MarkStatus } from '../../core/types';
 	import Steps from './Steps.svelte';
 
