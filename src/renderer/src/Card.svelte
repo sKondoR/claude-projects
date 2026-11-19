@@ -11,16 +11,16 @@
 		open: boolean;
 		flash: boolean; // переход к карточке по зависимости
 		dragging: boolean;
+		launching: boolean; // запуск уже идёт: второй клик не откроет вторую сессию
 		onToggle: () => void;
 		onMove: (to: string) => void;
-		launching: boolean; // запуск уже идёт: второй клик не откроет вторую сессию
 		onDone: () => void;
 		onLaunch: () => void;
 		onDep: (id: string) => void;
 		onDragStart: () => void;
 		onDragEnd: () => void;
 	}
-	let { card, groups, open, flash, dragging, onToggle, onMove, launching, onDone, onLaunch, onDep, onDragStart, onDragEnd }: Props = $props();
+	let { card, groups, open, flash, dragging, launching, onToggle, onMove, onDone, onLaunch, onDep, onDragStart, onDragEnd }: Props = $props();
 
 	const PRI: Record<string, string> = { Высокая: 'p-hi', Средняя: 'p-mid' };
 

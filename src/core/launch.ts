@@ -1,4 +1,4 @@
-// Кнопка «В работу»: вкладка Windows Terminal в папке проекта запускает claude с номером и сутью задачи (раунд 5).
+// Кнопка «В работу»: вкладка Windows Terminal в папке проекта запускает claude с номером и сутью задачи.
 import type { BoardCard } from './board';
 import { MARKS, taskTitle } from './labels';
 import type { Card } from './types';

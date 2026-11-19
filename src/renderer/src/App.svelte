@@ -3,7 +3,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { BoardCard, BoardGroup } from '../../core/board';
 	import { ISSUES_DIR } from '../../core/groups';
-	import { DIFFICULTIES, RISK_LABELS } from '../../core/labels';
+	import { DIFFICULTIES, RISK_LABELS, taskTitle } from '../../core/labels';
 	import { launchWarnings } from '../../core/launch';
 	import { RULES_SOURCE } from '../../core/rules';
 	import { matchesQuery } from '../../core/search';
@@ -67,6 +67,7 @@
 	let searchEl = $state<HTMLInputElement>();
 	// Строка пути, а не project: project меняется при каждом обновлении файлов, и поле очищалось бы само.
 	const activePath = $derived(project?.path);
+	// Очистка следит за активным проектом, а не за кликом по вкладке: вкладку меняет и основной процесс, например когда проект убирают.
 	$effect(() => {
 		void activePath;
 		query = '';
@@ -92,10 +93,13 @@
 	async function launch(c: BoardCard) {
 		if (!project || launching.has(c.id)) return;
 		const warnings = launchWarnings(c);
-		if (warnings.length && !confirm(`Начать задачу?\n\n${c.id} · ${c.title}\n\n${warnings.join('\n')}`)) return;
+		if (warnings.length && !confirm(`Начать задачу?\n\n${taskTitle(c)}\n\n${warnings.join('\n')}`)) return;
 		launching.add(c.id);
-		await act(api.launch(project.path, c.id));
-		launching.delete(c.id);
+		try {
+			await act(api.launch(project.path, c.id));
+		} finally {
+			launching.delete(c.id);
+		}
 	}
 	function removeProject(path: string, name: string) {
 		if (confirm(`Убрать проект «${name}» из приложения?\n\nФайлы проекта останутся как есть.`)) void api.removeProject(path);
