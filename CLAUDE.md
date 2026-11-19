@@ -47,3 +47,12 @@ pnpm dist     установщик NSIS в dist/
 Проверить правку в окне (скриншоты, клики) — навык `/run-claude-projects`: драйвер запускает сборку с временными настройками и проектом-примером.
 
 Настройки приложения: `%APPDATA%\Claude Projects\settings.json`.
+
+<!-- issues-pointer:start 2884344a -->
+## Задачи
+
+Правила учёта задач (`docs/issues/`) лежат в `CLAUDE-ISSUES.md`. Приложение Claude Projects обновляет их само. Особые правила этого проекта лежат в `CLAUDE-ISSUES-LOCAL.md`.
+
+@CLAUDE-ISSUES.md
+@CLAUDE-ISSUES-LOCAL.md
+<!-- issues-pointer:end -->
