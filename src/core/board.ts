@@ -40,6 +40,25 @@ export function latestMarks(marks: Mark[]): Map<string, Mark> {
 	return latest;
 }
 
+// Кратчайший цикл открытых зависимостей через задачу: [А, Б, А]; null — цикла нет. Поиск в ширину по зависимостям.
+function cycleOf(id: string, open: Map<string, BoardCard>): string[] | null {
+	const from = new Map<string, string>(); // задача → задача, в зависимостях которой её нашли
+	const queue = [id];
+	for (const cur of queue) {
+		for (const dep of open.get(cur)!.deps) {
+			if (dep === id) {
+				const chain: string[] = [];
+				for (let x = cur; x !== id; x = from.get(x)!) chain.unshift(x);
+				return [id, ...chain, id];
+			}
+			if (!open.has(dep) || from.has(dep)) continue;
+			from.set(dep, cur);
+			queue.push(dep);
+		}
+	}
+	return null;
+}
+
 export function buildBoard({ groups, closed, marks, worktrees }: BoardInput): { groups: BoardGroup[] } {
 	const columns = groups.map((g) => ({ ...column(g), cards: parseGroup(g.text, keyOf(g.file)).map(toBoardCard) }));
 	const open = new Map<string, BoardCard>();
@@ -71,6 +90,8 @@ export function buildBoard({ groups, closed, marks, worktrees }: BoardInput): { 
 	for (const c of open.values()) {
 		c.status = latest.get(c.id) ?? null;
 		c.depStates = c.deps.map((id) => ({ id, state: open.has(id) ? 'open' : closed.has(id) ? 'closed' : 'unknown' }));
+		const cycle = cycleOf(c.id, open);
+		if (cycle) c.warnings.push(`цикл зависимостей: ${cycle.join(' → ')}`);
 	}
 	return { groups: columns.sort((a, b) => compareGroups(a.file, b.file)) };
 }
