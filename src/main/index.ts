@@ -25,6 +25,7 @@ import {
 	samePath,
 	switchToMain,
 	syncRules,
+	wrapperOf,
 	type Rules,
 } from './project';
 import { branchPr, prState } from './github';
@@ -51,12 +52,16 @@ let quitting = false;
 
 interface Live {
 	worktrees: WorktreeRef[];
+	wrapper: string | null; // папка-обёртка проекта (wrapperOf): её сессии Claude Code — сессии проекта
 	view: Omit<ProjectView, 'sessions'> | null; // null — доска ещё не прочитана; сессии добавляет state()
 	unwatch: () => void;
 	notices: string[]; // ошибки синхронизации правил
 	merged: (WorktreeRef & { head: string })[]; // worktree с веткой, чей PR влит, а коммиты все вошли в PR; head — последний коммит PR
 }
 const live = new Map<string, Live>();
+
+// Папки сессий Claude Code проекта: сам проект, его worktree и папка-обёртка.
+const sessionDirs = (root: string, p: Live) => [root, ...p.worktrees.map((w) => w.path), ...(p.wrapper ? [p.wrapper] : [])];
 
 function refresh(root: string) {
 	const p = live.get(root);
@@ -96,7 +101,7 @@ function state(): AppState {
 	const projects: ProjectView[] = [];
 	for (const root of settings.projects) {
 		const p = live.get(root);
-		if (p?.view) projects.push({ ...p.view, sessions: sessionsIn([root, ...p.worktrees.map((w) => w.path)], sessions) });
+		if (p?.view) projects.push({ ...p.view, sessions: sessionsIn(sessionDirs(root, p), sessions) });
 	}
 	return {
 		projects,
@@ -123,8 +128,11 @@ async function updateWorktrees(root: string) {
 	const p = live.get(root);
 	if (!p) return;
 	const next = await listWorktrees(root);
-	if (JSON.stringify(next) === JSON.stringify(p.worktrees)) return;
+	// Обёртка зависит от списка копий: worktree рядом с проектом — не чужой репозиторий.
+	const wrapper = wrapperOf(root, [root, ...next.map((w) => w.path)]);
+	if (JSON.stringify(next) === JSON.stringify(p.worktrees) && wrapper === p.wrapper) return;
 	p.worktrees = next;
+	p.wrapper = wrapper;
 	rewatch(root);
 	refresh(root);
 }
@@ -154,7 +162,7 @@ async function checkPrs(root: string) {
 
 function openProject(root: string) {
 	if (live.has(root)) return;
-	const p: Live = { worktrees: [], view: null, unwatch: () => {}, notices: [], merged: [] };
+	const p: Live = { worktrees: [], wrapper: null, view: null, unwatch: () => {}, notices: [], merged: [] };
 	live.set(root, p);
 	if (rules) p.notices = syncRules(root, rules);
 	rewatch(root);
@@ -366,11 +374,7 @@ function ipc() {
 	ipcMain.handle('timeLog', (_e, root: string) => {
 		const p = live.get(root);
 		if (!p) return [];
-		return timeLog(
-			root,
-			p.worktrees.map((w) => w.path),
-			p.view?.groups.flatMap((g) => g.cards) ?? [],
-		);
+		return timeLog(root, sessionDirs(root, p), p.view?.groups.flatMap((g) => g.cards) ?? []);
 	});
 }
 

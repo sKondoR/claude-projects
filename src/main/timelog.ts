@@ -1,4 +1,4 @@
-// Учёт времени Claude Code в проекте: транскрипты сессий проекта и его worktree в папке projects настроек Claude.
+// Учёт времени Claude Code в проекте: транскрипты сессий в папках проекта (сам проект, worktree, папка-обёртка) в папке projects настроек Claude.
 // Разбор каждого транскрипта хранится в %APPDATA%\Claude Projects\timelog\ до изменения файла. Claude Code удаляет
 // транскрипты старше 30 дней (cleanupPeriodDays), а их разбор остаётся в кеше: прошлые дни не пропадают.
 import fs from 'node:fs';
@@ -16,7 +16,7 @@ import { CLAUDE_DIR } from './sessions';
 interface Entry {
 	stamp: string; // время изменения и размер транскрипта
 	v: number; // TIMELOG_VERSION разбора
-	own: boolean; // сессия запущена в проекте или его worktree; раз признанная своей — своя и после удаления worktree
+	own: boolean; // сессия запущена в проекте, его worktree или папке-обёртке; раз признанная своей — своя и после удаления worktree
 	log: SessionLog | null;
 }
 type Cache = Record<string, Entry>; // путь транскрипта → разбор
@@ -57,11 +57,11 @@ async function parseFile(file: string): Promise<SessionLog | null> {
 	return parser.result();
 }
 
-// Транскрипты сессий в папках копий проекта и их подпапок. Папка — путь с «-» вместо знаков, поэтому под начало имени
+// Транскрипты сессий в папках проекта и их подпапок. Папка — путь с «-» вместо знаков, поэтому под начало имени
 // попадают и чужие папки (_auction и _auction_ci): чья сессия, решает её cwd. Транскрипты субагентов лежат глубже и не нужны:
 // главная сессия ждёт субагента, и это время уже в ней.
-function transcripts(copies: string[]): string[] {
-	const prefixes = copies.map(transcriptDirOf);
+function transcripts(dirs: string[]): string[] {
+	const prefixes = dirs.map(transcriptDirOf);
 	return ls(PROJECTS_DIR)
 		.filter((d) => prefixes.some((p) => d.toLowerCase().startsWith(p)))
 		.flatMap((d) => ls(path.join(PROJECTS_DIR, d)).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(PROJECTS_DIR, d, f)));
@@ -74,10 +74,10 @@ function titlesOf(root: string, open: Card[]): Map<string, string> {
 	return new Map([...closed, ...open].map((c) => [c.id, c.title.replaceAll('`', '')]));
 }
 
-async function compute(root: string, copies: string[], open: Card[]): Promise<DayRow[]> {
+async function compute(root: string, dirs: string[], open: Card[]): Promise<DayRow[]> {
 	const cache = loadCache(root);
 	let changed = false;
-	for (const file of transcripts(copies)) {
+	for (const file of transcripts(dirs)) {
 		const st = await fs.promises.stat(file).catch(() => null);
 		if (!st) continue;
 		const stamp = `${st.mtimeMs}:${st.size}`;
@@ -88,7 +88,7 @@ async function compute(root: string, copies: string[], open: Card[]): Promise<Da
 			changed = true;
 		}
 		// worktree появляется в списке не сразу: сессия, ещё не признанная своей, проверяется при каждом подсчёте.
-		if (!entry.own && entry.log && inDirs(copies, entry.log.cwd)) entry.own = changed = true;
+		if (!entry.own && entry.log && inDirs(dirs, entry.log.cwd)) entry.own = changed = true;
 	}
 	if (changed) writeAtomic(cacheFile(root), JSON.stringify(cache));
 	const titles = titlesOf(root, open);
@@ -101,10 +101,11 @@ async function compute(root: string, copies: string[], open: Card[]): Promise<Da
 // Повторный запрос, пока идёт подсчёт, ждёт тот же подсчёт: первый разбор больших транскриптов идёт минуты.
 const running = new Map<string, Promise<DayRow[]>>();
 
-export function timeLog(root: string, worktrees: string[], open: Card[]): Promise<DayRow[]> {
+// dirs — папки сессий проекта: сам проект, его worktree и папка-обёртка.
+export function timeLog(root: string, dirs: string[], open: Card[]): Promise<DayRow[]> {
 	let p = running.get(root);
 	if (!p) {
-		p = compute(root, [root, ...worktrees], open).finally(() => running.delete(root));
+		p = compute(root, dirs, open).finally(() => running.delete(root));
 		running.set(root, p);
 	}
 	return p;

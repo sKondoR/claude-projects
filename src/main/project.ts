@@ -1,6 +1,7 @@
 // Файлы проекта: базовые группы, управляемые блоки правил, доска, перенос и закрытие задач.
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { buildBoard, latestMarks, type BoardGroup, type Worktree } from '../core/board';
@@ -10,6 +11,7 @@ import { HOOK_SCRIPT, isOwnPrePush, PRE_PUSH_SCRIPT, prePushText, SETTINGS_FILE,
 import { findOverlaps, type Overlap } from '../core/overlap';
 import { closedIdsOf, idsOf } from '../core/parse';
 import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, LOCAL_FILE, POINTER_BLOCK, RULES_SOURCE } from '../core/rules';
+import { inDirs } from '../core/sessions';
 import { hash } from '../core/text';
 import type { Mark, MdFile } from '../core/types';
 import { parseWorktrees, type WorktreeRef } from '../core/worktrees';
@@ -138,6 +140,21 @@ function gitReposOf(root: string): string[] {
 	};
 	scan(root, 2);
 	return found;
+}
+
+// Папка над проектом, из которой тоже запускают claude: документы, макеты и аудиты рядом с репозиторием проекта.
+// Она — обёртка проекта, если сама не в git и все её репозитории — копии проекта. Иначе это общая папка проектов.
+export function wrapperOf(root: string, copies: string[]): string | null {
+	const parent = path.dirname(path.resolve(root));
+	// Корень диска и домашняя папка — не обёртки: в них всё подряд, а обход их подпапок долгий.
+	if (parent === path.parse(parent).root || samePath(parent, os.homedir())) return null;
+	let repos: string[];
+	try {
+		repos = gitReposOf(parent);
+	} catch {
+		return null; // папку над проектом не прочитать
+	}
+	return repos.length && repos.every((r) => inDirs(copies, r)) ? parent : null;
 }
 
 // git pre-push в каждом репозитории проекта. Нет репозитория — ошибка на вкладке, а не тихий пропуск.

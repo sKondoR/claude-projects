@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, removableAt, switchToMain, syncRules } from './project';
+import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, removableAt, switchToMain, syncRules, wrapperOf } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
@@ -245,5 +245,45 @@ describe('пересечения', () => {
 		fs.appendFileSync(path.join(root, 'CLAUDE-ISSUES.md'), `${rule}\n`);
 		write('docs/issues/CLAUDE.md', `# Старые правила\n\n${rule}\n`);
 		expect(projectOverlaps(root, rules, [])).toEqual([]);
+	});
+});
+
+describe('папка над проектом', () => {
+	const repo = (dir: string) => fs.mkdirSync(path.join(root, dir, '.git'), { recursive: true });
+	const proj = () => path.join(root, 'proj');
+
+	it('обёртка репозитория проекта и его worktree', () => {
+		repo('proj');
+		fs.mkdirSync(path.join(root, 'design'));
+		fs.mkdirSync(path.join(root, 'proj-hdr'));
+		fs.writeFileSync(path.join(root, 'proj-hdr', '.git'), 'gitdir: ../proj/.git/worktrees/hdr\n');
+		expect(wrapperOf(proj(), [proj(), path.join(root, 'proj-hdr')])).toBe(path.resolve(root));
+	});
+
+	it('проект не в git, репозиторий кода в его подпапке', () => {
+		repo('proj/app');
+		expect(wrapperOf(proj(), [proj()])).toBe(path.resolve(root));
+	});
+
+	it('общая папка проектов — не обёртка', () => {
+		repo('proj');
+		repo('other');
+		expect(wrapperOf(proj(), [proj()])).toBeNull();
+	});
+
+	it('папка без репозиториев — не обёртка', () => {
+		fs.mkdirSync(proj());
+		expect(wrapperOf(proj(), [proj()])).toBeNull();
+	});
+
+	it('корень диска и домашняя папка — не обёртки', () => {
+		expect(wrapperOf(path.join(path.parse(root).root, 'proj'), [])).toBeNull();
+		expect(wrapperOf(path.join(os.homedir(), 'proj'), [])).toBeNull();
+	});
+
+	it('папка в git — не обёртка', () => {
+		repo('.');
+		fs.mkdirSync(proj());
+		expect(wrapperOf(proj(), [proj()])).toBeNull();
 	});
 });
