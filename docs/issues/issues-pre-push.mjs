@@ -1,10 +1,12 @@
 // Проверка git pre-push для доски Claude Projects: push в основную ветку отменяется, если сообщение отправляемого коммита
 // называет задачу, а в отправляемом коммите она ещё открыта (заголовок «### <номер> · …» в docs/issues).
 // Так задача закрывается до push и без PR — и когда push делает Claude, и когда человек.
+// Если папка проекта не в git, а репозиторий — её подпапка, docs/issues нет в коммитах: открытые задачи берутся из файлов на диске.
 // Git запускает скрипт из .git/hooks/pre-push: аргументы — имя и адрес удалённого репозитория,
 // на входе строки «<локальная ссылка> <хеш> <удалённая ссылка> <хеш>». Код 1 отменяет push; обойти — git push --no-verify.
 // Файл ставит и обновляет приложение Claude Projects из эталона _claude-projects/rules/issues-pre-push.mjs: не правьте его в проекте.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,18 +28,27 @@ function mainRefs(remote) {
 	return (head ? [head] : ['main', 'master']).map((b) => `refs/heads/${b}`);
 }
 
-// docs/issues проекта от корня репозитория: проект может быть подпапкой.
+const ISSUES = path.dirname(fileURLToPath(import.meta.url)); // docs/issues проекта
+const HEADING = /^### (\S+) · /gm;
+
+// docs/issues проекта от корня репозитория: проект может быть подпапкой. null — папка проекта не в git.
 function issuesPathspec() {
-	const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-	const sub = path.relative(git('-C', root, 'rev-parse', '--show-toplevel'), root).split(path.sep).join('/');
+	const root = path.resolve(ISSUES, '../..');
+	const top = tryGit('-C', root, 'rev-parse', '--show-toplevel');
+	if (!top) return null;
+	const sub = path.relative(top, root).split(path.sep).join('/');
 	return `:(top)${sub ? `${sub}/` : ''}docs/issues`;
 }
 
 // Номера открытых задач в коммите: заголовки «### <номер> · …». Код 1 у git grep — совпадений нет;
 // другая ошибка не глотается: проверка не должна молча пропустить push.
 function openIds(sha, pathspec) {
+	if (pathspec === null) {
+		const files = fs.readdirSync(ISSUES).filter((f) => f.endsWith('.md'));
+		return files.flatMap((f) => [...fs.readFileSync(path.join(ISSUES, f), 'utf8').matchAll(HEADING)].map((m) => m[1]));
+	}
 	try {
-		return [...git('grep', '-h', '-E', '^### [^[:space:]]+ · ', sha, '--', pathspec).matchAll(/^### (\S+) · /gm)].map((m) => m[1]);
+		return [...git('grep', '-h', '-E', '^### [^[:space:]]+ · ', sha, '--', pathspec).matchAll(HEADING)].map((m) => m[1]);
 	} catch (e) {
 		if (e.status === 1) return [];
 		throw e;
@@ -63,7 +74,8 @@ function check(remote, input) {
 	for (const line of input.split('\n')) {
 		const [, localSha, remoteRef, remoteSha] = line.trim().split(/\s+/);
 		if (!localSha || ZERO.test(localSha) || !main.includes(remoteRef)) continue;
-		const open = openIds(localSha, (pathspec ??= issuesPathspec()));
+		if (pathspec === undefined) pathspec = issuesPathspec();
+		const open = openIds(localSha, pathspec);
 		if (!open.length) continue;
 		const log = git('log', '--format=%h%x00%B%x01', ...newCommits(localSha, remoteSha, remote));
 		for (const entry of log.split('\x01')) {

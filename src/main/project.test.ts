@@ -24,7 +24,8 @@ describe('новый проект', () => {
 	it('создаёт базовые группы, правила, ссылку, скрипт и хук', () => {
 		write('CLAUDE.md', '# Проект\n\nКоманды.\n');
 		createBaseGroups(root);
-		expect(syncRules(root, rules)).toEqual([]);
+		// Временная папка не в git: pre-push ставить некуда, вкладка это показывает.
+		expect(syncRules(root, rules)).toEqual([expect.stringMatching(/^pre-push: в папке проекта и её подпапках нет git-репозитория/)]);
 		expect(read('docs/issues/issues.md')).toBe('# Задачи\n');
 		expect(read('docs/issues/backlog.md')).toBe('# Бэклог\n');
 		expect(read('CLAUDE.md')).toMatch(/^# Проект\n\nКоманды\.\n\n<!-- issues-pointer:start \w+ -->\n[\s\S]*@CLAUDE-ISSUES\.md\n@CLAUDE-ISSUES-LOCAL\.md\n<!-- issues-pointer:end -->\n$/);
@@ -56,7 +57,7 @@ describe('новый проект', () => {
 
 	it('сломанный маркер — сообщение, файл не меняется', () => {
 		write('CLAUDE.md', '<!-- issues-pointer:start 1 -->\nстарое\n');
-		expect(syncRules(root, rules)).toEqual([expect.stringMatching(/^CLAUDE\.md: Нет маркера/)]);
+		expect(syncRules(root, rules)).toEqual([expect.stringMatching(/^CLAUDE\.md: Нет маркера/), expect.stringMatching(/^pre-push: /)]);
 		expect(read('CLAUDE.md')).toBe('<!-- issues-pointer:start 1 -->\nстарое\n');
 	});
 });

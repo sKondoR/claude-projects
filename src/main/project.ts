@@ -60,11 +60,7 @@ export function syncRules(root: string, rules: Rules): string[] {
 	sync(path.join(ISSUES_DIR, HOOK_SCRIPT), () => rules.hook);
 	sync(SETTINGS_FILE, settingsWithHooks);
 	sync(path.join(ISSUES_DIR, PRE_PUSH_SCRIPT), () => rules.prePush);
-	try {
-		syncPrePush(root);
-	} catch (e) {
-		errors.push(`pre-push: ${(e as Error).message}`);
-	}
+	errors.push(...syncPrePush(root));
 	sync(LOCAL_FILE, (old) => old ?? rules.local); // правила проекта: только создать, если файла нет
 	return errors;
 }
@@ -120,18 +116,55 @@ function gitTopOf(root: string): string | null {
 	}
 }
 
-// git pre-push репозитория проекта. Чужой хук и свой путь хуков (core.hooksPath, например husky) не трогаются: ошибка на вкладке.
-// --git-path hooks уже учитывает core.hooksPath: путь не в .git/hooks — путь хуков свой.
-function syncPrePush(root: string) {
-	if (!gitTopOf(root)) return;
-	const out = execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--git-path', 'hooks'], { encoding: 'utf8', windowsHide: true });
-	const [gitDir = '', hooksDir = ''] = out.trim().split(/\r?\n/);
+// Репозитории проекта: тот, где лежит папка проекта, а если её нет в git — репозитории в подпапках до второго уровня
+// (документы и задачи в папке проекта, код в подпапке). Зависимости и скрытые папки не просматриваются.
+function gitReposOf(root: string): string[] {
+	if (gitTopOf(root)) return [root];
+	const found: string[] = [];
+	const scan = (dir: string, depth: number) => {
+		for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+			if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
+			const sub = path.join(dir, e.name);
+			if (fs.existsSync(path.join(sub, '.git'))) found.push(sub);
+			else if (depth > 1) scan(sub, depth - 1);
+		}
+	};
+	scan(root, 2);
+	return found;
+}
+
+// git pre-push в каждом репозитории проекта. Нет репозитория — ошибка на вкладке, а не тихий пропуск.
+function syncPrePush(root: string): string[] {
 	const skip = 'проверка задач перед push не установлена';
+	let repos: string[];
+	try {
+		repos = gitReposOf(root);
+	} catch (e) {
+		return [`pre-push: ${(e as Error).message}, ${skip}`];
+	}
+	if (!repos.length) return [`pre-push: в папке проекта и её подпапках нет git-репозитория, ${skip}`];
+	const errors: string[] = [];
+	for (const repo of repos) {
+		try {
+			installPrePush(repo, path.join(root, ISSUES_DIR, PRE_PUSH_SCRIPT));
+		} catch (e) {
+			errors.push(`pre-push: ${(e as Error).message}`);
+		}
+	}
+	return errors;
+}
+
+// Чужой хук и свой путь хуков (core.hooksPath, например husky) не трогаются: ошибка на вкладке.
+// --git-path hooks уже учитывает core.hooksPath: путь не в .git/hooks — путь хуков свой.
+function installPrePush(repo: string, script: string) {
+	const out = execFileSync('git', ['-C', repo, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--git-path', 'hooks'], { encoding: 'utf8', windowsHide: true });
+	const [gitDir = '', hooksDir = ''] = out.trim().split(/\r?\n/);
+	const skip = `проверка задач перед push в ${repo} не установлена`;
 	if (!samePath(hooksDir, path.join(gitDir, 'hooks'))) throw new Error(`в репозитории свой путь хуков core.hooksPath (${hooksDir}), ${skip}`);
 	const file = path.join(hooksDir, 'pre-push');
 	const old = readText(file);
 	if (old !== null && !isOwnPrePush(old)) throw new Error(`в репозитории свой хук ${file}, ${skip}`);
-	writeIfChanged(file, prePushText(path.join(root, ISSUES_DIR, PRE_PUSH_SCRIPT)));
+	writeIfChanged(file, prePushText(script));
 	fs.chmodSync(file, 0o755);
 }
 

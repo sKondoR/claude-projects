@@ -12,7 +12,7 @@ Claude Projects — десктопное приложение (Windows) с до�
   - блок `issues-pointer` в `CLAUDE.md` с импортами `@CLAUDE-ISSUES.md` и `@CLAUDE-ISSUES-LOCAL.md`;
   - скрипт отметок `docs/issues/issues-status.mjs`;
   - хук Claude Code `docs/issues/issues-hook.mjs` и его записи в `.claude/settings.json` (`src/core/hooks.ts`): отметки simplify и review;
-  - проверка `docs/issues/issues-pre-push.mjs` и git-хук `.git/hooks/pre-push`, который её запускает: push в основную ветку отменяется, если коммит называет задачу, а она ещё открыта. Чужой `pre-push` и `core.hooksPath` приложение не трогает и пишет об этом на вкладке.
+  - проверка `docs/issues/issues-pre-push.mjs` и git-хук `.git/hooks/pre-push`, который её запускает: push в основную ветку отменяется, если коммит называет задачу, а она ещё открыта. Чужой `pre-push` и `core.hooksPath` приложение не трогает и пишет об этом на вкладке. Если папка проекта не в git, хук ставится в репозитории подпапок до второго уровня, а проверка читает задачи с диска. Репозитория нет — предупреждение на вкладке.
 - Правила проекта лежат в `CLAUDE-ISSUES-LOCAL.md`. Если файла нет, приложение создаёт его из `rules/local.md` и больше не меняет.
 - Эталон синхронизируется при запуске и при изменении файлов в папке эталона. Путь к папке хранится в настройках, по умолчанию — `rules/` этого репозитория.
 - Доска следит за `docs/issues`, `docs/resolved`, `CLAUDE.md`, `CLAUDE-ISSUES.md` проекта и его git worktree.

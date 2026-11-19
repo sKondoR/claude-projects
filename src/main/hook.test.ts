@@ -20,7 +20,7 @@ beforeEach(() => {
 	root = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-hook-'));
 	createBaseGroups(root);
 	fs.appendFileSync(path.join(root, 'docs/issues/issues.md'), '\n' + card('С1'));
-	expect(syncRules(root, rules)).toEqual([]);
+	expect(syncRules(root, rules)).toEqual([expect.stringMatching(/^pre-push: в папке проекта и её подпапках нет git-репозитория/)]);
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -84,6 +84,46 @@ describe('git pre-push', { timeout: 30_000 }, () => {
 		expect(fs.readFileSync(hook, 'utf8')).toBe('#!/bin/sh\nexit 0\n');
 		git('config', 'core.hooksPath', '.husky');
 		expect(syncRules(root, rules)).toEqual([expect.stringMatching(/^pre-push: .*core\.hooksPath \(.*\.husky\)/)]);
+	});
+});
+
+// Папка проекта не в git, код — в репозитории-подпапке: задач в коммитах нет, проверка читает их с диска.
+describe('git pre-push в репозитории-подпапке', { timeout: 30_000 }, () => {
+	let remote: string;
+	let app: string;
+	const gitIn = (...args: string[]) => execFileSync('git', args, { cwd: app, stdio: 'pipe', encoding: 'utf8' });
+	const commitIn = (message: string) => {
+		fs.appendFileSync(path.join(app, 'work.txt'), `${message}\n`);
+		gitIn('add', '-A');
+		gitIn('commit', '-q', '-m', message);
+	};
+	const push = () => spawnSync('git', ['push', '-q', 'origin', 'main'], { cwd: app, encoding: 'utf8' });
+
+	beforeEach(() => {
+		remote = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-remote-'));
+		execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+		app = path.join(root, 'code', 'app');
+		fs.mkdirSync(app, { recursive: true });
+		gitIn('init', '-q', '-b', 'main');
+		gitIn('config', 'user.name', 't');
+		gitIn('config', 'user.email', 't@t');
+		gitIn('remote', 'add', 'origin', remote);
+		// Не репозиторий: папки зависимостей не просматриваются, иначе была бы ошибка git.
+		fs.mkdirSync(path.join(root, 'node_modules/dep/.git'), { recursive: true });
+		expect(syncRules(root, rules)).toEqual([]);
+		commitIn('init');
+		expect(push().status).toBe(0);
+	}, 30_000);
+	afterEach(() => fs.rmSync(remote, { recursive: true, force: true }));
+
+	it('задача открыта в файлах проекта — push в main отменён; после закрытия на диске проходит', () => {
+		expect(fs.readFileSync(path.join(app, '.git/hooks/pre-push'), 'utf8')).toContain('issues-pre-push.mjs');
+		commitIn('С1: форма заявки');
+		const res = push();
+		expect(res.status).not.toBe(0);
+		expect(res.stderr).toMatch(/С1 \(\w+\)/);
+		fs.writeFileSync(path.join(root, 'docs/issues/issues.md'), '# Задачи\n');
+		expect(push().status).toBe(0);
 	});
 });
 
