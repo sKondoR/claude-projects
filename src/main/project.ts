@@ -189,9 +189,12 @@ export async function listWorktrees(root: string): Promise<WorktreeRef[]> {
 	}
 }
 
-// Все коммиты рабочей копии входят в коммит sha (например, последний коммит PR). Нет коммита sha локально или git не ответил — false.
-export async function headWithin(dir: string, sha: string): Promise<boolean> {
+// Рабочую копию можно удалить без потерь: нет несохранённых и новых файлов, все коммиты входят в коммит sha (например, последний коммит PR).
+// Нет коммита sha локально или git не ответил — false.
+export async function removableAt(dir: string, sha: string): Promise<boolean> {
 	try {
+		const { stdout } = await execFileAsync('git', ['-C', dir, 'status', '--porcelain'], { windowsHide: true });
+		if (stdout) return false;
 		await execFileAsync('git', ['-C', dir, 'merge-base', '--is-ancestor', 'HEAD', sha], { windowsHide: true });
 		return true;
 	} catch {

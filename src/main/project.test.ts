@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, syncRules } from './project';
+import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, removableAt, syncRules } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
@@ -183,6 +183,24 @@ describe('worktree', () => {
 		expect(list.map((w) => w.branch)).toEqual(['feat', expect.stringMatching(/^[0-9a-f]{7}$/)]);
 		expect(await listWorktrees(path.join(root, 'нет-git'))).toEqual([]);
 	}, 30_000); // семь запусков git на Windows дольше 5 с по умолчанию
+
+	it('worktree можно удалить, только если нет новых файлов и коммитов сверх PR', async () => {
+		const repo = path.join(root, 'repo');
+		const wt = path.join(root, 'wt');
+		const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'pipe', encoding: 'utf8' });
+		fs.mkdirSync(repo);
+		git(repo, 'init', '-q', '-b', 'main');
+		git(repo, 'commit', '-q', '--allow-empty', '-m', 'начало');
+		git(repo, 'worktree', 'add', '-q', '-b', 'feat', wt);
+		git(wt, 'commit', '-q', '--allow-empty', '-m', 'PR');
+		const prHead = git(wt, 'rev-parse', 'HEAD').trim();
+		expect(await removableAt(wt, prHead)).toBe(true);
+		fs.writeFileSync(path.join(wt, 'new.md'), 'не в git');
+		expect(await removableAt(wt, prHead)).toBe(false);
+		fs.rmSync(path.join(wt, 'new.md'));
+		git(wt, 'commit', '-q', '--allow-empty', '-m', 'после слияния');
+		expect(await removableAt(wt, prHead)).toBe(false);
+	}, 30_000);
 });
 
 describe('пересечения', () => {

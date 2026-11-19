@@ -15,13 +15,13 @@ import {
 	closeTask,
 	createBaseGroups,
 	dropPrMarks,
-	headWithin,
 	listWorktrees,
 	loadRules,
 	moveTask,
 	projectBoard,
 	projectOverlaps,
 	prUrls,
+	removableAt,
 	samePath,
 	syncRules,
 	type Rules,
@@ -135,10 +135,10 @@ async function checkPrs(root: string) {
 	const urls = prUrls(root, p.worktrees);
 	const worktrees = p.worktrees;
 	// Запросы независимы: идут одновременно.
-	// Ветку с тем же именем могли продолжить после слияния: удалить можно, только если в worktree нет коммитов сверх PR.
+	// Ветку с тем же именем могли продолжить после слияния: удалить можно, только если в worktree нет коммитов сверх PR и несохранённых правок.
 	const removable = async (w: WorktreeRef) => {
 		const pr = await branchPr(root, w.branch);
-		return pr?.state === 'MERGED' && (await headWithin(w.path, pr.head));
+		return pr?.state === 'MERGED' && (await removableAt(w.path, pr.head));
 	};
 	const [urlStates, removables] = await Promise.all([Promise.all(urls.map((url) => prState(root, url))), Promise.all(worktrees.map(removable))]);
 	const done = new Set(urls.filter((_, i) => urlStates[i] === 'MERGED' || urlStates[i] === 'CLOSED'));
