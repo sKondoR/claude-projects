@@ -2,6 +2,7 @@
 import type { BoardGroup } from '../core/board';
 import type { Overlap } from '../core/overlap';
 import type { Session } from '../core/sessions';
+import type { DayRow } from '../core/timelog';
 
 export interface ProjectView {
 	path: string;
@@ -33,5 +34,6 @@ export interface Api {
 	setTheme(dark: boolean): Promise<void>;
 	copy(text: string): Promise<void>;
 	launch(path: string, id: string): Promise<string | null>; // вкладка Windows Terminal с claude по задаче; текст ошибки или null
+	timeLog(path: string): Promise<DayRow[]>; // время Claude Code в проекте и его worktree по дням, новые сверху
 	onState(cb: (state: AppState) => void): () => void;
 }

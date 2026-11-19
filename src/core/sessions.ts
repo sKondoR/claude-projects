@@ -25,11 +25,14 @@ export function parseSession(text: string | null): Session | null {
 	}
 }
 
-// Сессии, запущенные в одной из папок или во вложенной папке. Регистр пути в Windows не важен.
-export function sessionsIn(dirs: string[], sessions: Session[]): Session[] {
-	const inside = (dir: string, cwd: string) => {
-		const rel = path.relative(dir.toLowerCase(), cwd.toLowerCase());
+// Путь — одна из папок или вложенная в неё папка. Регистр пути в Windows не важен.
+export function inDirs(dirs: string[], p: string): boolean {
+	const target = p.toLowerCase();
+	return dirs.some((dir) => {
+		const rel = path.relative(dir.toLowerCase(), target);
 		return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
-	};
-	return sessions.filter((s) => dirs.some((d) => inside(d, s.cwd)));
+	});
 }
+
+// Сессии, запущенные в одной из папок или во вложенной папке.
+export const sessionsIn = (dirs: string[], sessions: Session[]): Session[] => sessions.filter((s) => inDirs(dirs, s.cwd));

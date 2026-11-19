@@ -16,3 +16,5 @@ nsis:
   oneClick: true
   perMachine: false
   artifactName: claude-projects-setup-${version}.${ext}
+  # Удаление приложения оставляет %APPDATA%\Claude Projects: там настройки и кеш учёта времени с днями, транскриптов которых уже нет.
+  deleteAppDataOnUninstall: false

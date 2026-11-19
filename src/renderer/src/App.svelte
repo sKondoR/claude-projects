@@ -12,6 +12,7 @@
 	import Card from './Card.svelte';
 	import Menu from './Menu.svelte';
 	import Steps from './Steps.svelte';
+	import TimeLog from './TimeLog.svelte';
 
 	const api = window.api;
 
@@ -41,6 +42,8 @@
 	const launching = new SvelteSet<string>();
 	let errors = $state<string[]>([]);
 	let showOverlaps = $state(false);
+	let showTime = $state(false);
+	let tabsHeight = $state(0);
 	let dragged = $state<string | null>(null);
 	let over = $state<string | null>(null);
 	let flash = $state<string | null>(null);
@@ -78,6 +81,8 @@
 			searchEl.focus();
 			searchEl.select();
 		}
+		// Esc при открытом меню закрывает только меню: popover закрывается после обработчика, поэтому здесь оно ещё открыто.
+		if (e.key === 'Escape' && showTime && !document.querySelector(':popover-open')) showTime = false;
 	}
 	const shown = (c: BoardCard) =>
 		(!difficulty || c.difficulty === difficulty) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage) && matchesQuery(c, query);
@@ -134,7 +139,7 @@
 <svelte:document onclick={onLinkClick} />
 <svelte:window onkeydown={onKey} />
 
-<nav class="tabs">
+<nav class="tabs" bind:offsetHeight={tabsHeight}>
 	{#each app.projects as p (p.path)}
 		<div class="tab" class:active={p.path === project?.path} title={p.path}>
 			<span class="sessions" class:on={p.sessions.length} title={sessionsTitle(p.sessions)}>{p.sessions.length || ''}</span>
@@ -156,7 +161,14 @@
 	<button class="rules-dir" title="Папка эталона правил: {app.rulesDir}. Нажмите, чтобы выбрать другую" onclick={() => api.chooseRulesDir()}
 		>Правила: {app.rulesDir}</button
 	>
-	<Menu />
+	<div class="corner">
+		<button class="icon-btn" title="Время Claude Code в проекте" aria-label="Время Claude Code в проекте" aria-pressed={showTime} onclick={() => (showTime = !showTime)}>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"
+				><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg
+			>
+		</button>
+		<Menu />
+	</div>
 </nav>
 
 {#if !project}
@@ -293,5 +305,8 @@
 			</section>
 		{/each}
 	</main>
+	{#if showTime}
+		<TimeLog root={project.path} name={project.name} top={tabsHeight} onClose={() => (showTime = false)} />
+	{/if}
 {/if}
 

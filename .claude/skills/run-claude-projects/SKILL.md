@@ -41,9 +41,9 @@ SHOTS_DIR=/c/tmp/shots node .claude/skills/run-claude-projects/driver.mjs "ss li
 | `theme light\|dark` | тема через меню, как у пользователя |
 | `wait <мс>` | пауза |
 
-Что видно сразу после запуска: проект `demo` с тремя задачами (риск 0, 1, 2, приоритеты, этап), второй пустой проект `demo2`, ⚠ на вкладке `demo` — `CLAUDE.md` примера повторяет общее правило. `click .tab .warn` открывает панель пересечений, `click .card .head` раскрывает первую карточку. Эталон правил — `rules/` этого репозитория.
+Что видно сразу после запуска: проект `demo` с тремя задачами (риск 0, 1, 2, приоритеты, этап), второй пустой проект `demo2`, ⚠ на вкладке `demo` — `CLAUDE.md` примера повторяет общее правило. `click .tab .warn` открывает панель пересечений, `click .card .head` раскрывает первую карточку. `click .icon-btn` открывает панель учёта времени: у `demo` вчера задача С2, сегодня сессия «Падение сборки» без задачи. Транскрипты примера драйвер пишет в свою папку настроек Claude (`CLAUDE_CONFIG_DIR`), поэтому круг сессий на вкладках всегда серый. Эталон правил — `rules/` этого репозитория.
 
-Полезные селекторы: `.tabs`, `.tab.active`, `.menu-btn`, `#app-menu`, `.legend .keys .chip`, `.overlaps`, `.board .col`, `.card`, `.card .head`.
+Полезные селекторы: `.tabs`, `.tab.active`, `.menu-btn`, `#app-menu`, `.icon-btn`, `.timelog`, `.legend .keys .chip`, `.overlaps`, `.board .col`, `.card`, `.card .head`.
 
 ## Direct invocation
 

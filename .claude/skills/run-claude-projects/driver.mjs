@@ -37,10 +37,40 @@ function seed(root) {
 	return path.join(root, 'user-data');
 }
 
+// Транскрипты сессий Claude Code в проекте-примере для панели учёта времени: вчера задача С2 по отметке work, сегодня сессия без задачи.
+// Папка настроек Claude своя (CLAUDE_CONFIG_DIR): приложение не читает настоящие сессии и транскрипты.
+function seedTranscript(root, demo) {
+	// Имя папки — как у Claude Code и transcriptDirOf в src/core/timelog.ts; отметка и запрос — форматы MARK_RE и launchPrompt.
+	const dir = path.join(root, 'claude/projects', demo.replace(/[^a-zA-Z0-9]/g, '-'));
+	fs.mkdirSync(dir, { recursive: true });
+	const day = (offset, h, m) => {
+		const d = new Date();
+		d.setDate(d.getDate() + offset);
+		d.setHours(h, m, 0, 0);
+		return d.toISOString();
+	};
+	const user = (timestamp, content) => ({ type: 'user', timestamp, cwd: demo, message: { content } });
+	const assistant = (timestamp, content = [{ type: 'text', text: 'ok' }]) => ({ type: 'assistant', timestamp, cwd: demo, message: { content } });
+	const mark = { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'node docs/issues/issues-status.mjs С2 work feat/form' } };
+	const sessions = {
+		s1: [
+			user(day(-1, 10, 0), 'Возьми задачу С2 · Форма заявки'),
+			assistant(day(-1, 10, 4), [mark]),
+			user(day(-1, 10, 5), [{ type: 'tool_result', tool_use_id: 't1', content: '' }]),
+			assistant(day(-1, 10, 40)),
+		],
+		s2: [user(day(0, 9, 0), 'Почему падает сборка?'), assistant(day(0, 9, 4)), user(day(0, 9, 6), 'Почини'), assistant(day(0, 9, 9)), { type: 'ai-title', aiTitle: 'Падение сборки' }],
+	};
+	for (const [name, lines] of Object.entries(sessions)) fs.writeFileSync(path.join(dir, `${name}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+	return path.join(root, 'claude');
+}
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-projects-run-'));
 fs.mkdirSync(SHOTS, { recursive: true });
 // Своя папка настроек — и своя блокировка одного экземпляра: запуск не мешает установленному приложению.
-const app = await electron.launch({ executablePath: exe, args: [REPO, `--user-data-dir=${seed(root)}`], timeout: 30_000 });
+const userData = seed(root);
+const env = { ...process.env, CLAUDE_CONFIG_DIR: seedTranscript(root, path.join(root, 'demo')) };
+const app = await electron.launch({ executablePath: exe, args: [REPO, `--user-data-dir=${userData}`], env, timeout: 30_000 });
 const page = await app.firstWindow();
 // Playwright по умолчанию подменяет prefers-color-scheme на light: без сброса тёмная тема не включается.
 await page.emulateMedia({ colorScheme: null });

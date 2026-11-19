@@ -20,7 +20,9 @@ export function launchWarnings(c: BoardCard): string[] {
 	return warnings;
 }
 
-export const launchPrompt = (c: Pick<Card, 'id' | 'title'>) => `Возьми задачу ${taskTitle(c)}`;
+// По этому началу запроса учёт времени узнаёт задачу сессии (timelog.ts).
+export const LAUNCH_PREFIX = 'Возьми задачу ';
+export const launchPrompt = (c: Pick<Card, 'id' | 'title'>) => LAUNCH_PREFIX + taskTitle(c);
 
 // Аргументы wt.exe. Windows Terminal сам разбирает свою командную строку:
 // «;» делит её на команды — экранируем; «"» режет текст на аргументы — меняем на «'»;

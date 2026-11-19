@@ -5,7 +5,8 @@ import path from 'node:path';
 import { parseSession, type Session } from '../core/sessions';
 import { readText } from './files';
 
-export const SESSIONS_DIR = path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'sessions');
+export const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+export const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
 
 // Сигнал 0 ничего не посылает, только проверяет процесс. EPERM — процесс есть, но прав на сигнал нет.
 function alive(pid: number): boolean {

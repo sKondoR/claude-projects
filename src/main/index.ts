@@ -29,6 +29,7 @@ import {
 import { branchPr, prState } from './github';
 import { readSessions, SESSIONS_DIR } from './sessions';
 import { loadSettings, saveSettings, type Settings } from './store';
+import { timeLog } from './timelog';
 import { watch } from './watch';
 
 // Эталон правил по умолчанию: папка rules репозитория приложения, из которого его собрали (Q17).
@@ -334,6 +335,15 @@ function ipc() {
 			child.on('spawn', () => resolve(null));
 			child.on('error', (e) => resolve(`Не удалось запустить Windows Terminal: ${e.message}`));
 		});
+	});
+	ipcMain.handle('timeLog', (_e, root: string) => {
+		const p = live.get(root);
+		if (!p) return [];
+		return timeLog(
+			root,
+			p.worktrees.map((w) => w.path),
+			p.view?.groups.flatMap((g) => g.cards) ?? [],
+		);
 	});
 }
 
