@@ -14,15 +14,18 @@ import type { AppState, ProjectView } from '../shared/api';
 import {
 	closeTask,
 	createBaseGroups,
+	dropPrMarks,
 	listWorktrees,
 	loadRules,
 	moveTask,
 	projectBoard,
 	projectOverlaps,
+	prUrls,
 	samePath,
 	syncRules,
 	type Rules,
 } from './project';
+import { branchPrState, prState } from './github';
 import { readSessions, SESSIONS_DIR } from './sessions';
 import { loadSettings, saveSettings, type Settings } from './store';
 import { watch } from './watch';
@@ -31,6 +34,7 @@ import { watch } from './watch';
 // Копии в установщике нет: она устаревала бы и молча писала старые правила в проекты.
 declare const __RULES_DIR__: string;
 const WORKTREE_REFRESH_MS = 60_000;
+const PR_CHECK_MS = 5 * 60_000;
 const RULES_DIR_CHECK_MS = 60_000;
 // Сессия, которая упала и не удалила свой файл, не даёт события слежения: живые процессы сверяются раз в 15 с.
 const SESSIONS_CHECK_MS = 15_000;
@@ -47,13 +51,14 @@ interface Live {
 	view: Omit<ProjectView, 'sessions'> | null; // null — доска ещё не прочитана; сессии добавляет state()
 	unwatch: () => void;
 	notices: string[]; // ошибки синхронизации правил
+	merged: string[]; // worktree, чей PR влит
 }
 const live = new Map<string, Live>();
 
 function refresh(root: string) {
 	const p = live.get(root);
 	if (!p) return;
-	const notices = [...(rulesError ? [rulesError] : []), ...p.notices];
+	const notices = [...(rulesError ? [rulesError] : []), ...p.notices, ...p.merged];
 	let groups: ProjectView['groups'] = [];
 	try {
 		groups = projectBoard(root, p.worktrees);
@@ -118,14 +123,37 @@ async function updateWorktrees(root: string) {
 	refresh(root);
 }
 
+// Состояние PR на GitHub: отметки «PR» влитых и закрытых PR снимаются, worktree с влитой веткой — строка на вкладке.
+async function checkPrs(root: string) {
+	const p = live.get(root);
+	if (!p) return;
+	const urls = prUrls(root, p.worktrees);
+	const worktrees = p.worktrees;
+	// Запросы независимы: идут одновременно.
+	const [urlStates, branchStates] = await Promise.all([
+		Promise.all(urls.map((url) => prState(root, url))),
+		Promise.all(worktrees.map((w) => branchPrState(root, w.branch))),
+	]);
+	const done = new Set(urls.filter((_, i) => urlStates[i] === 'MERGED' || urlStates[i] === 'CLOSED'));
+	const merged = worktrees
+		.filter((_, i) => branchStates[i] === 'MERGED')
+		.map((w) => `Worktree ${w.path}: PR ветки ${w.branch} влит, папку можно удалить: git worktree remove "${w.path}"`);
+	if (live.get(root) !== p) return; // проект убрали, пока шли запросы
+	const dropped = done.size > 0 && dropPrMarks(root, p.worktrees, done);
+	if (!dropped && JSON.stringify(merged) === JSON.stringify(p.merged)) return;
+	p.merged = merged;
+	refresh(root);
+}
+
 function openProject(root: string) {
 	if (live.has(root)) return;
-	const p: Live = { worktrees: [], view: null, unwatch: () => {}, notices: [] };
+	const p: Live = { worktrees: [], view: null, unwatch: () => {}, notices: [], merged: [] };
 	live.set(root, p);
 	if (rules) p.notices = syncRules(root, rules);
 	rewatch(root);
 	refresh(root);
-	void updateWorktrees(root);
+	// PR проверяются после списка worktree: отметки и ветки есть и в них.
+	void updateWorktrees(root).then(() => checkPrs(root));
 }
 
 function closeProject(root: string) {
@@ -338,6 +366,7 @@ else {
 			updateSessions();
 		}, SESSIONS_CHECK_MS);
 		setInterval(() => settings.projects.forEach((r) => void updateWorktrees(r)), WORKTREE_REFRESH_MS);
+		setInterval(() => settings.projects.forEach((r) => void checkPrs(r)), PR_CHECK_MS);
 		setInterval(() => syncRulesDir(false), RULES_DIR_CHECK_MS);
 	});
 }

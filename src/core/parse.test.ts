@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ownerLabel } from './labels';
-import { idsOf, parseGroup } from './parse';
+import { closedIdsOf, idsOf, parseGroup } from './parse';
 
 const FILE = `# Задачи
 
@@ -98,6 +98,12 @@ describe('parseGroup', () => {
 
 	it('номера задач: заголовок в блоке кода — не задача', () => {
 		expect(idsOf('### А1 · X\n\n```md\n### А9 · пример\n```\n\n### А2 · Y\n')).toEqual(['А1', 'А2']);
+	});
+
+	it('номера закрытых задач: заголовки и пункты старого формата «- [x] **У4 · …**»', () => {
+		const text = '- [x] **У4 · Низкая · Старая задача** (найдено 2026-10-29).\n- [ ] **S28 · Средняя · Ещё одна**\n\n### Ш1 · Новая\n\n```md\n- [x] **А9 · пример**\n```\n';
+		expect(closedIdsOf(text)).toEqual(['У4', 'S28', 'Ш1']);
+		expect(idsOf(text)).toEqual(['Ш1']);
 	});
 
 	it('незакрытый блок кода не поглощает следующие задачи', () => {

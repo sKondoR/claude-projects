@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeTask, createBaseGroups, listWorktrees, loadRules, moveTask, projectBoard, projectOverlaps, syncRules } from './project';
+import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, syncRules } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
@@ -95,6 +95,30 @@ describe('задачи', () => {
 			expect(read('docs/resolved/issues-DONE.md')).toContain('PR https://github.com/x/y/pull/8');
 			expect(fs.existsSync(path.join(wt, 'docs/issues/status.json'))).toBe(false);
 			expect(JSON.parse(read('docs/issues/status.json'))).toMatchObject([{ id: 'С1' }]);
+		} finally {
+			fs.rmSync(wt, { recursive: true, force: true });
+		}
+	});
+
+	it('номер из закрытой задачи старого формата — предупреждение на карточке', () => {
+		write('docs/resolved/issues-DONE.md', '# Закрытые задачи\n\n- [x] **С1 · Низкая · Старая задача** (найдено 2026-10-29).\n');
+		expect(projectBoard(root, [])[0]!.cards.find((c) => c.id === 'С1')?.warnings).toContain('номер уже есть среди закрытых задач');
+	});
+
+	it('отметки «PR» влитого PR снимаются во всех копиях, другие остаются', () => {
+		const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-wt-'));
+		try {
+			const [pr7, pr8] = ['https://github.com/x/y/pull/7', 'https://github.com/x/y/pull/8'];
+			const mark = (id: string, status: string, url: string | null) => ({ id, status, branch: 'b', url, at: '2026-11-19T10:00' });
+			write('docs/issues/status.json', JSON.stringify([mark('С1', 'pr', pr7), mark('С2', 'work', null)]));
+			fs.mkdirSync(path.join(wt, 'docs/issues'), { recursive: true });
+			fs.writeFileSync(path.join(wt, 'docs/issues/status.json'), JSON.stringify([mark('С2', 'pr', pr7), mark('С3', 'pr', pr8)]));
+			const wts = [{ path: wt, branch: 'b' }];
+			expect(prUrls(root, wts)).toEqual([pr7, pr8]);
+			expect(dropPrMarks(root, wts, new Set([pr7]))).toBe(true);
+			expect(JSON.parse(read('docs/issues/status.json'))).toMatchObject([{ id: 'С2', status: 'work' }]);
+			expect(JSON.parse(fs.readFileSync(path.join(wt, 'docs/issues/status.json'), 'utf8'))).toMatchObject([{ id: 'С3', url: pr8 }]);
+			expect(dropPrMarks(root, wts, new Set([pr7]))).toBe(false);
 		} finally {
 			fs.rmSync(wt, { recursive: true, force: true });
 		}

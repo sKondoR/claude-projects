@@ -31,28 +31,30 @@ function mainRefs(remote) {
 const ISSUES = path.dirname(fileURLToPath(import.meta.url)); // docs/issues проекта
 const HEADING = /^### (\S+) · /gm;
 
-// docs/issues проекта от корня репозитория: проект может быть подпапкой. null — папка проекта не в git.
-function issuesPathspec() {
+const idsIn = (text) => [...text.matchAll(HEADING)].map((m) => m[1]);
+
+// Чтение номеров открытых задач: заголовки «### <номер> · …». Папка проекта в git — из коммита (docs/issues от корня
+// репозитория: проект может быть подпапкой); не в git — из файлов на диске, коммит не важен.
+function openIdsReader() {
 	const root = path.resolve(ISSUES, '../..');
 	const top = tryGit('-C', root, 'rev-parse', '--show-toplevel');
-	if (!top) return null;
+	if (!top)
+		return () =>
+			fs
+				.readdirSync(ISSUES)
+				.filter((f) => f.endsWith('.md'))
+				.flatMap((f) => idsIn(fs.readFileSync(path.join(ISSUES, f), 'utf8')));
 	const sub = path.relative(top, root).split(path.sep).join('/');
-	return `:(top)${sub ? `${sub}/` : ''}docs/issues`;
-}
-
-// Номера открытых задач в коммите: заголовки «### <номер> · …». Код 1 у git grep — совпадений нет;
-// другая ошибка не глотается: проверка не должна молча пропустить push.
-function openIds(sha, pathspec) {
-	if (pathspec === null) {
-		const files = fs.readdirSync(ISSUES).filter((f) => f.endsWith('.md'));
-		return files.flatMap((f) => [...fs.readFileSync(path.join(ISSUES, f), 'utf8').matchAll(HEADING)].map((m) => m[1]));
-	}
-	try {
-		return [...git('grep', '-h', '-E', '^### [^[:space:]]+ · ', sha, '--', pathspec).matchAll(HEADING)].map((m) => m[1]);
-	} catch (e) {
-		if (e.status === 1) return [];
-		throw e;
-	}
+	const pathspec = `:(top)${sub ? `${sub}/` : ''}docs/issues`;
+	// Код 1 у git grep — совпадений нет; другая ошибка не глотается: проверка не должна молча пропустить push.
+	return (sha) => {
+		try {
+			return idsIn(git('grep', '-h', '-E', '^### [^[:space:]]+ · ', sha, '--', pathspec));
+		} catch (e) {
+			if (e.status === 1) return [];
+			throw e;
+		}
+	};
 }
 
 // Новые коммиты: после коммита ветки в удалённом репозитории, если он есть локально;
@@ -69,13 +71,12 @@ const mentions = (message, id) => new RegExp(`(?<![\\p{L}\\p{N}])${escape(id)}(?
 // Текст отказа или null — push можно.
 function check(remote, input) {
 	const main = mainRefs(remote);
-	let pathspec;
+	let openIds;
 	const found = new Map(); // номер задачи → хеши коммитов, которые его называют
 	for (const line of input.split('\n')) {
 		const [, localSha, remoteRef, remoteSha] = line.trim().split(/\s+/);
 		if (!localSha || ZERO.test(localSha) || !main.includes(remoteRef)) continue;
-		if (pathspec === undefined) pathspec = issuesPathspec();
-		const open = openIds(localSha, pathspec);
+		const open = (openIds ??= openIdsReader())(localSha);
 		if (!open.length) continue;
 		const log = git('log', '--format=%h%x00%B%x01', ...newCommits(localSha, remoteSha, remote));
 		for (const entry of log.split('\x01')) {

@@ -8,7 +8,7 @@ import { closeCard, doneNote, moveCard } from '../core/edit';
 import { BASE_GROUPS, doneFileOf, isGroupFile, ISSUES_DIR, RESOLVED_DIR } from '../core/groups';
 import { HOOK_SCRIPT, isOwnPrePush, PRE_PUSH_SCRIPT, prePushText, SETTINGS_FILE, settingsWithHooks } from '../core/hooks';
 import { findOverlaps, type Overlap } from '../core/overlap';
-import { idsOf } from '../core/parse';
+import { closedIdsOf, idsOf } from '../core/parse';
 import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, LOCAL_FILE, POINTER_BLOCK, RULES_SOURCE } from '../core/rules';
 import { hash } from '../core/text';
 import type { Mark, MdFile } from '../core/types';
@@ -82,7 +82,7 @@ function closedOf(root: string): Set<string> {
 		if (!st) continue;
 		const stamp = `${st.mtimeMs}:${st.size}`;
 		let entry = closedCache.get(file);
-		if (entry?.stamp !== stamp) closedCache.set(file, (entry = { stamp, ids: idsOf(readText(file) ?? '') }));
+		if (entry?.stamp !== stamp) closedCache.set(file, (entry = { stamp, ids: closedIdsOf(readText(file) ?? '') }));
 		for (const id of entry.ids) ids.add(id);
 	}
 	return ids;
@@ -135,23 +135,22 @@ function gitReposOf(root: string): string[] {
 
 // git pre-push в каждом репозитории проекта. Нет репозитория — ошибка на вкладке, а не тихий пропуск.
 function syncPrePush(root: string): string[] {
-	const skip = 'проверка задач перед push не установлена';
+	const fail = (reason: string, where = root) => `pre-push: ${reason}, проверка задач перед push в ${where} не установлена`;
 	let repos: string[];
 	try {
 		repos = gitReposOf(root);
 	} catch (e) {
-		return [`pre-push: ${(e as Error).message}, ${skip}`];
+		return [fail((e as Error).message)];
 	}
-	if (!repos.length) return [`pre-push: в папке проекта и её подпапках нет git-репозитория, ${skip}`];
-	const errors: string[] = [];
-	for (const repo of repos) {
+	if (!repos.length) return [fail('в папке проекта и её подпапках нет git-репозитория')];
+	return repos.flatMap((repo) => {
 		try {
 			installPrePush(repo, path.join(root, ISSUES_DIR, PRE_PUSH_SCRIPT));
+			return [];
 		} catch (e) {
-			errors.push(`pre-push: ${(e as Error).message}`);
+			return [fail((e as Error).message, repo)];
 		}
-	}
-	return errors;
+	});
 }
 
 // Чужой хук и свой путь хуков (core.hooksPath, например husky) не трогаются: ошибка на вкладке.
@@ -159,11 +158,10 @@ function syncPrePush(root: string): string[] {
 function installPrePush(repo: string, script: string) {
 	const out = execFileSync('git', ['-C', repo, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--git-path', 'hooks'], { encoding: 'utf8', windowsHide: true });
 	const [gitDir = '', hooksDir = ''] = out.trim().split(/\r?\n/);
-	const skip = `проверка задач перед push в ${repo} не установлена`;
-	if (!samePath(hooksDir, path.join(gitDir, 'hooks'))) throw new Error(`в репозитории свой путь хуков core.hooksPath (${hooksDir}), ${skip}`);
+	if (!samePath(hooksDir, path.join(gitDir, 'hooks'))) throw new Error(`в репозитории свой путь хуков core.hooksPath (${hooksDir})`);
 	const file = path.join(hooksDir, 'pre-push');
 	const old = readText(file);
-	if (old !== null && !isOwnPrePush(old)) throw new Error(`в репозитории свой хук ${file}, ${skip}`);
+	if (old !== null && !isOwnPrePush(old)) throw new Error(`в репозитории свой хук ${file}`);
 	writeIfChanged(file, prePushText(script));
 	fs.chmodSync(file, 0o755);
 }
@@ -250,6 +248,25 @@ export function moveTask(root: string, id: string, toGroup: string): string | nu
 	const to = path.join(root, ISSUES_DIR, `${toGroup}.md`);
 	if (samePath(from, to)) return null;
 	return editPair(from, to, (src, dst) => moveCard(src, dst, id));
+}
+
+// Адреса PR в отметках «PR» всех рабочих копий.
+export function prUrls(root: string, worktrees: WorktreeRef[]): string[] {
+	const marks = copiesOf(root, worktrees).flatMap(readMarks);
+	return [...new Set(marks.flatMap((m) => (m.status === 'pr' && m.url ? [m.url] : [])))];
+}
+
+// Снять отметки «PR» с этими адресами во всех рабочих копиях: PR влит или закрыт. Возвращает, снято ли что-то.
+export function dropPrMarks(root: string, worktrees: WorktreeRef[], urls: Set<string>): boolean {
+	let dropped = false;
+	for (const dir of copiesOf(root, worktrees)) {
+		const marks = readMarks(dir);
+		const left = marks.filter((m) => !(m.status === 'pr' && m.url && urls.has(m.url)));
+		if (left.length === marks.length) continue;
+		writeMarks(dir, left);
+		dropped = true;
+	}
+	return dropped;
 }
 
 // Отметку задачи могла поставить сессия в любой рабочей копии: PR берётся из самой поздней, как на доске; снимается во всех.

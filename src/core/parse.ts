@@ -115,12 +115,22 @@ export function parseGroup(text: string, group: string): Card[] {
 	return cards;
 }
 
-// Номера задач в тексте — для закрытых задач и проверки номера. Заголовки в блоках кода не считаются, как в parseGroup.
-export function idsOf(text: string): string[] {
+// Номера из строк, где совпал один из шаблонов (номер — первая группа). Строки в блоках кода не считаются, как в parseGroup.
+function scanIds(text: string, res: RegExp[]): string[] {
 	const lines = lf(text).split('\n');
 	const code = codeLines(lines);
 	return lines.flatMap((line, i) => {
-		const task = !code[i] && CARD_RE.exec(line);
+		if (code[i]) return [];
+		const task = res.map((re) => re.exec(line)).find(Boolean);
 		return task ? [task[1]!] : [];
 	});
 }
+
+// Номера задач в тексте — для открытых задач и проверки номера.
+export const idsOf = (text: string) => scanIds(text, [CARD_RE]);
+
+// Старый формат закрытых задач в docs/resolved: пункт списка «- [x] **У4 · Низкая · …** …».
+const OLD_DONE_RE = /^- \[[ xX]\] \*\*(\S+) · /;
+
+// Номера закрытых задач: заголовки задач и пункты старого формата.
+export const closedIdsOf = (text: string) => scanIds(text, [CARD_RE, OLD_DONE_RE]);

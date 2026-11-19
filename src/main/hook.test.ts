@@ -8,13 +8,26 @@ import { createBaseGroups, loadRules, syncRules } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
-const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
+const gitIn = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
+const git = (...args: string[]) => gitIn(root, ...args);
 const card = (id: string) => `### ${id} · Задача ${id}\n\n**Приоритет:** Средняя · **Риск:** 0\n\nТекст ${id}.\n`;
-const commit = (message: string) => {
-	fs.appendFileSync(path.join(root, 'work.txt'), `${message}\n`);
-	git('add', '-A');
-	git('commit', '-q', '-m', message);
+const commitIn = (cwd: string, message: string) => {
+	fs.appendFileSync(path.join(cwd, 'work.txt'), `${message}\n`);
+	gitIn(cwd, 'add', '-A');
+	gitIn(cwd, 'commit', '-q', '-m', message);
 };
+const commit = (message: string) => commitIn(root, message);
+
+// Репозиторий в папке dir и пустой удалённый origin; возвращает путь удалённого.
+function initRepo(dir: string): string {
+	const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-remote-'));
+	execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+	gitIn(dir, 'init', '-q', '-b', 'main');
+	gitIn(dir, 'config', 'user.name', 't');
+	gitIn(dir, 'config', 'user.email', 't@t');
+	gitIn(dir, 'remote', 'add', 'origin', remote);
+	return remote;
+}
 
 beforeEach(() => {
 	root = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-hook-'));
@@ -29,12 +42,7 @@ describe('git pre-push', { timeout: 30_000 }, () => {
 	let remote: string;
 	// Репозиторий с удалённым: синхронизация ставит pre-push, первый push проходит.
 	beforeEach(() => {
-		remote = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-remote-'));
-		execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
-		git('init', '-q', '-b', 'main');
-		git('config', 'user.name', 't');
-		git('config', 'user.email', 't@t');
-		git('remote', 'add', 'origin', remote);
+		remote = initRepo(root);
 		expect(syncRules(root, rules)).toEqual([]);
 		commit('init');
 		git('push', '-q', 'origin', 'main');
@@ -91,34 +99,23 @@ describe('git pre-push', { timeout: 30_000 }, () => {
 describe('git pre-push в репозитории-подпапке', { timeout: 30_000 }, () => {
 	let remote: string;
 	let app: string;
-	const gitIn = (...args: string[]) => execFileSync('git', args, { cwd: app, stdio: 'pipe', encoding: 'utf8' });
-	const commitIn = (message: string) => {
-		fs.appendFileSync(path.join(app, 'work.txt'), `${message}\n`);
-		gitIn('add', '-A');
-		gitIn('commit', '-q', '-m', message);
-	};
 	const push = () => spawnSync('git', ['push', '-q', 'origin', 'main'], { cwd: app, encoding: 'utf8' });
 
 	beforeEach(() => {
-		remote = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-remote-'));
-		execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
 		app = path.join(root, 'code', 'app');
 		fs.mkdirSync(app, { recursive: true });
-		gitIn('init', '-q', '-b', 'main');
-		gitIn('config', 'user.name', 't');
-		gitIn('config', 'user.email', 't@t');
-		gitIn('remote', 'add', 'origin', remote);
+		remote = initRepo(app);
 		// Не репозиторий: папки зависимостей не просматриваются, иначе была бы ошибка git.
 		fs.mkdirSync(path.join(root, 'node_modules/dep/.git'), { recursive: true });
 		expect(syncRules(root, rules)).toEqual([]);
-		commitIn('init');
+		commitIn(app, 'init');
 		expect(push().status).toBe(0);
 	}, 30_000);
 	afterEach(() => fs.rmSync(remote, { recursive: true, force: true }));
 
 	it('задача открыта в файлах проекта — push в main отменён; после закрытия на диске проходит', () => {
 		expect(fs.readFileSync(path.join(app, '.git/hooks/pre-push'), 'utf8')).toContain('issues-pre-push.mjs');
-		commitIn('С1: форма заявки');
+		commitIn(app, 'С1: форма заявки');
 		const res = push();
 		expect(res.status).not.toBe(0);
 		expect(res.stderr).toMatch(/С1 \(\w+\)/);
