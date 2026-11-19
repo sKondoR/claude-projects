@@ -202,6 +202,26 @@ export async function removableAt(dir: string, sha: string): Promise<boolean> {
 	}
 }
 
+// Рабочая копия переходит на свежую основную ветку origin без своей ветки (detached HEAD): основная ветка открыта
+// в папке проекта, а git не открывает одну ветку в двух копиях. Прежняя ветка остаётся в репозитории.
+// Основная ветка — из origin/HEAD; забирается только она. Текст ошибки git или null.
+export async function switchToMain(dir: string): Promise<string | null> {
+	const git = (...args: string[]) => execFileAsync('git', ['-C', dir, ...args], { windowsHide: true });
+	const originHead = () => git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD').then((r) => r.stdout.trim().replace(/^origin\//, ''));
+	try {
+		// Нет origin/HEAD (remote добавлен не через git clone): основную ветку называет origin, git её запоминает.
+		const main = await originHead().catch(async () => {
+			await git('remote', 'set-head', 'origin', '--auto');
+			return originHead();
+		});
+		await git('fetch', '-q', 'origin', main);
+		await git('switch', '-q', '--detach', `origin/${main}`);
+		return null;
+	} catch (e) {
+		return `${dir}: ${(e as { stderr?: string }).stderr?.trim() || (e as Error).message}`;
+	}
+}
+
 // Корень проекта и его worktree: у каждой копии свои файлы задач и свой status.json.
 const copiesOf = (root: string, worktrees: WorktreeRef[]) => [root, ...worktrees.map((w) => w.path)];
 

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, removableAt, syncRules } from './project';
+import { closeTask, createBaseGroups, dropPrMarks, listWorktrees, loadRules, moveTask, prUrls, projectBoard, projectOverlaps, removableAt, switchToMain, syncRules } from './project';
 
 const rules = loadRules(path.resolve('rules'));
 let root: string;
@@ -200,6 +200,31 @@ describe('worktree', () => {
 		fs.rmSync(path.join(wt, 'new.md'));
 		git(wt, 'commit', '-q', '--allow-empty', '-m', 'после слияния');
 		expect(await removableAt(wt, prHead)).toBe(false);
+	}, 30_000);
+
+	it('worktree переходит на свежую основную ветку origin без своей ветки', async () => {
+		const src = path.join(root, 'src');
+		const origin = path.join(root, 'origin');
+		const repo = path.join(root, 'repo');
+		const wt = path.join(root, 'wt');
+		const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'pipe', encoding: 'utf8' });
+		// Основная ветка не main, и origin/HEAD нет: ветку называет origin.
+		fs.mkdirSync(src);
+		git(src, 'init', '-q', '-b', 'trunk');
+		git(src, 'commit', '-q', '--allow-empty', '-m', 'начало');
+		git(root, 'clone', '-q', '--bare', src, origin);
+		git(root, 'clone', '-q', origin, repo);
+		git(repo, 'remote', 'set-head', 'origin', '-d');
+		git(repo, 'worktree', 'add', '-q', '-b', 'feat', wt);
+		// PR влит: в origin trunk появился новый коммит, папка проекта его ещё не забрала.
+		git(repo, 'commit', '-q', '--allow-empty', '-m', 'слияние PR');
+		git(repo, 'push', '-q', 'origin', 'trunk');
+		git(repo, 'reset', '-q', '--hard', 'HEAD~1');
+		expect(await switchToMain(wt)).toBeNull();
+		expect(git(wt, 'rev-parse', 'HEAD')).toBe(git(origin, 'rev-parse', 'trunk'));
+		expect(git(wt, 'branch', '--show-current').trim()).toBe('');
+		expect(git(repo, 'branch', '--list', 'feat').trim()).toBe('feat');
+		expect(await switchToMain(path.join(root, 'нет-git'))).toMatch(/нет-git/);
 	}, 30_000);
 });
 

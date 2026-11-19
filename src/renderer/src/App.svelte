@@ -40,6 +40,7 @@
 	let folds = $state<Record<string, Record<string, boolean>>>(saved('issues-fold', {}));
 	const opened = new SvelteSet<string>();
 	const launching = new SvelteSet<string>();
+	const switching = new SvelteSet<string>(); // worktree, которые сейчас переходят на main
 	let errors = $state<string[]>([]);
 	let showOverlaps = $state(false);
 	let showTime = $state(false);
@@ -104,6 +105,15 @@
 			await act(api.launch(project.path, c.id));
 		} finally {
 			launching.delete(c.id);
+		}
+	}
+	async function toMain(dir: string) {
+		if (!project || switching.has(dir)) return;
+		switching.add(dir);
+		try {
+			await act(api.toMain(project.path, dir));
+		} finally {
+			switching.delete(dir);
 		}
 	}
 	function removeProject(path: string, name: string) {
@@ -219,9 +229,15 @@
 		</div>
 	</header>
 
-	{#if project.notices.length || errors.length}
+	{#if project.notices.length || project.merged.length || errors.length}
 		<div class="notices" role="alert">
-			{#if errors.length}<button title="Скрыть" onclick={() => (errors = [])}>×</button>{/if}
+			{#if errors.length}<button class="dismiss" title="Скрыть" onclick={() => (errors = [])}>×</button>{/if}
+			{#each project.merged as w (w.path)}
+				<p>
+					Worktree {w.path}: PR ветки {w.branch} влит, папку можно удалить: git worktree remove "{w.path}"
+					<button class="to-main" disabled={switching.has(w.path)} title="Свежая основная ветка origin без своей ветки (detached HEAD). Ветка {w.branch} останется в репозитории." onclick={() => toMain(w.path)}>{switching.has(w.path) ? 'Переключаю…' : 'На свежий main'}</button>
+				</p>
+			{/each}
 			{#each [...project.notices, ...errors] as n, i (i)}<p>{n}</p>{/each}
 		</div>
 	{/if}

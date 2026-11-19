@@ -75,7 +75,10 @@ h1 { font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-heig
 /* Сообщения: ошибки чтения, синхронизации правил и действий */
 .notices { margin: 0 20px 12px; padding: 8px 12px; border: 1px solid var(--hi); border-radius: var(--r); color: var(--hi); font-size: 13px; }
 .notices p { margin: 2px 0; }
-.notices button { all: unset; cursor: pointer; float: right; color: var(--muted); }
+.notices button { all: unset; cursor: pointer; }
+.notices .dismiss { float: right; color: var(--muted); }
+.notices .to-main { margin-left: 8px; color: var(--accent); text-decoration: underline; }
+.notices .to-main:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 
 /* Пересечения общих правил с текстом проекта */
 .overlaps { margin: 0 20px 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--mid) 50%, transparent); background: color-mix(in srgb, var(--mid) 8%, var(--surface)); border-radius: var(--r); display: grid; gap: 10px; }

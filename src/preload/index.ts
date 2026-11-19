@@ -15,6 +15,7 @@ const api: Api = {
 	setTheme: (dark) => ipcRenderer.invoke('setTheme', dark),
 	copy: (text) => ipcRenderer.invoke('copy', text),
 	launch: (path, id) => ipcRenderer.invoke('launch', path, id),
+	toMain: (path, worktree) => ipcRenderer.invoke('toMain', path, worktree),
 	timeLog: (path) => ipcRenderer.invoke('timeLog', path),
 	onState: (cb) => {
 		const listener = (_e: unknown, state: AppState) => cb(state);

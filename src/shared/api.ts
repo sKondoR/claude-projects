@@ -3,6 +3,7 @@ import type { BoardGroup } from '../core/board';
 import type { Overlap } from '../core/overlap';
 import type { Session } from '../core/sessions';
 import type { DayRow } from '../core/timelog';
+import type { WorktreeRef } from '../core/worktrees';
 
 export interface ProjectView {
 	path: string;
@@ -10,6 +11,7 @@ export interface ProjectView {
 	groups: BoardGroup[];
 	overlaps: Overlap[]; // ещё не отмеченные «Проверено»
 	notices: string[]; // ошибки чтения и синхронизации правил
+	merged: WorktreeRef[]; // worktree, чей PR влит, а коммиты все вошли в PR: папку можно удалить или перевести на main
 	sessions: Session[]; // запущенные сессии Claude Code в проекте и его worktree
 }
 
@@ -34,6 +36,7 @@ export interface Api {
 	setTheme(dark: boolean): Promise<void>;
 	copy(text: string): Promise<void>;
 	launch(path: string, id: string): Promise<string | null>; // вкладка Windows Terminal с claude по задаче; текст ошибки или null
+	toMain(path: string, worktree: string): Promise<string | null>; // влитой worktree — на свежий main origin без ветки; текст ошибки или null
 	timeLog(path: string): Promise<DayRow[]>; // время Claude Code в проекте и его worktree по дням, новые сверху
 	onState(cb: (state: AppState) => void): () => void;
 }

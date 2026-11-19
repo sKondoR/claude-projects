@@ -23,6 +23,7 @@ import {
 	prUrls,
 	removableAt,
 	samePath,
+	switchToMain,
 	syncRules,
 	type Rules,
 } from './project';
@@ -53,18 +54,17 @@ interface Live {
 	view: Omit<ProjectView, 'sessions'> | null; // null — доска ещё не прочитана; сессии добавляет state()
 	unwatch: () => void;
 	notices: string[]; // ошибки синхронизации правил
-	merged: string[]; // пути worktree, чей PR влит, а коммиты все вошли в PR
+	merged: (WorktreeRef & { head: string })[]; // worktree с веткой, чей PR влит, а коммиты все вошли в PR; head — последний коммит PR
 }
 const live = new Map<string, Live>();
 
 function refresh(root: string) {
 	const p = live.get(root);
 	if (!p) return;
-	// Строки только для worktree, которые ещё есть: удалённый worktree уходит с вкладки со списком worktree, без ожидания gh.
-	const merged = p.worktrees
-		.filter((w) => p.merged.includes(w.path))
-		.map((w) => `Worktree ${w.path}: PR ветки ${w.branch} влит, папку можно удалить: git worktree remove "${w.path}"`);
-	const notices = [...(rulesError ? [rulesError] : []), ...p.notices, ...merged];
+	// Строки только для worktree, которые ещё есть на той же ветке: удалённый или переключённый worktree уходит с вкладки
+	// со списком worktree, без ожидания gh.
+	const merged = p.worktrees.filter((w) => p.merged.some((m) => m.path === w.path && m.branch === w.branch));
+	const notices = [...(rulesError ? [rulesError] : []), ...p.notices];
 	let groups: ProjectView['groups'] = [];
 	try {
 		groups = projectBoard(root, p.worktrees);
@@ -72,7 +72,7 @@ function refresh(root: string) {
 		notices.push(`Не удалось прочитать задачи: ${(e as Error).message}`);
 	}
 	const overlaps = rules ? projectOverlaps(root, rules, settings.reviewed[root] ?? []) : [];
-	p.view = { path: root, name: path.basename(root), groups, overlaps, notices };
+	p.view = { path: root, name: path.basename(root), groups, overlaps, notices, merged };
 	push();
 }
 
@@ -137,13 +137,14 @@ async function checkPrs(root: string) {
 	const worktrees = p.worktrees;
 	// Запросы независимы: идут одновременно.
 	// Ветку с тем же именем могли продолжить после слияния: удалить можно, только если в worktree нет коммитов сверх PR и несохранённых правок.
-	const removable = async (w: WorktreeRef) => {
+	// Ответ — последний коммит влитого PR или null.
+	const mergedHead = async (w: WorktreeRef) => {
 		const pr = await branchPr(root, w.branch);
-		return pr?.state === 'MERGED' && (await removableAt(w.path, pr.head));
+		return pr?.state === 'MERGED' && (await removableAt(w.path, pr.head)) ? pr.head : null;
 	};
-	const [urlStates, removables] = await Promise.all([Promise.all(urls.map((url) => prState(root, url))), Promise.all(worktrees.map(removable))]);
+	const [urlStates, heads] = await Promise.all([Promise.all(urls.map((url) => prState(root, url))), Promise.all(worktrees.map(mergedHead))]);
 	const done = new Set(urls.filter((_, i) => urlStates[i] === 'MERGED' || urlStates[i] === 'CLOSED'));
-	const merged = worktrees.filter((_, i) => removables[i]).map((w) => w.path);
+	const merged = worktrees.flatMap((w, i) => (heads[i] ? [{ ...w, head: heads[i] }] : []));
 	if (live.get(root) !== p) return; // проект убрали, пока шли запросы
 	const dropped = done.size > 0 && dropPrMarks(root, p.worktrees, done);
 	if (!dropped && JSON.stringify(merged) === JSON.stringify(p.merged)) return;
@@ -335,6 +336,32 @@ function ipc() {
 			child.on('spawn', () => resolve(null));
 			child.on('error', (e) => resolve(`Не удалось запустить Windows Terminal: ${e.message}`));
 		});
+	});
+	// Путь берём из списка влитых worktree, а не из окна: git запускается только в известной папке.
+	ipcMain.handle('toMain', async (_e, root: string, dir: string): Promise<string | null> => {
+		const p = live.get(root);
+		const m = p?.merged.find((w) => w.path === dir);
+		if (!m) return 'Нет такого worktree';
+		// Сессия в папке осталась бы без своей ветки: переключение — только после согласия пользователя.
+		const running = sessionsIn([dir], sessions);
+		if (running.length) {
+			const { response } = await dialog.showMessageBox(win!, {
+				type: 'question',
+				title: 'Worktree на свежий main',
+				message: `В worktree запущена сессия Claude Code (${running.length}). Переключить?`,
+				detail: `${dir}\n\nСессия останется без ветки ${m.branch}: папка перейдёт на свежую основную ветку origin.`,
+				buttons: ['Переключить', 'Отмена'],
+				defaultId: 1,
+				cancelId: 1,
+			});
+			if (response !== 0) return null;
+		}
+		// С проверки PR прошло до 5 мин: в копии могли появиться правки и коммиты, поэтому проверка повторяется.
+		if (!(await removableAt(dir, m.head))) return `${dir}: в worktree есть правки или коммиты сверх влитого PR, переключение отменено`;
+		const error = await switchToMain(dir);
+		// У копии теперь нет ветки: новый список worktree убирает строку с вкладки.
+		if (!error) await updateWorktrees(root);
+		return error;
 	});
 	ipcMain.handle('timeLog', (_e, root: string) => {
 		const p = live.get(root);
