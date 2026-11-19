@@ -7,15 +7,18 @@ Claude Projects — десктопное приложение (Windows) с до�
 
 - Вкладки — проекты. «+» добавляет папку проекта, «×» убирает её из приложения, файлы при этом остаются.
 - При добавлении приложение создаёт недостающие группы `docs/issues/{issues,security-issues,architecture-issues,other-issues,backlog}.md`.
-- Приложение держит в каждом проекте три управляемых файла из эталона [rules/](rules/):
+- Приложение держит в каждом проекте управляемые файлы из эталона [rules/](rules/):
   - блок `issues-rules` в `CLAUDE-ISSUES.md`;
   - блок `issues-pointer` в `CLAUDE.md` с импортами `@CLAUDE-ISSUES.md` и `@CLAUDE-ISSUES-LOCAL.md`;
-  - скрипт отметок `docs/issues/issues-status.mjs`.
+  - скрипт отметок `docs/issues/issues-status.mjs`;
+  - хук Claude Code `docs/issues/issues-hook.mjs` и его записи в `.claude/settings.json` (`src/core/hooks.ts`): отметки simplify и review;
+  - проверка `docs/issues/issues-pre-push.mjs` и git-хук `.git/hooks/pre-push`, который её запускает: push в основную ветку отменяется, если коммит называет задачу, а она ещё открыта. Чужой `pre-push` и `core.hooksPath` приложение не трогает и пишет об этом на вкладке.
 - Правила проекта лежат в `CLAUDE-ISSUES-LOCAL.md`. Если файла нет, приложение создаёт его из `rules/local.md` и больше не меняет.
 - Эталон синхронизируется при запуске и при изменении файлов в папке эталона. Путь к папке хранится в настройках, по умолчанию — `rules/` этого репозитория.
 - Доска следит за `docs/issues`, `docs/resolved`, `CLAUDE.md`, `CLAUDE-ISSUES.md` проекта и его git worktree.
 - Перенос (перетаскивание) и «Сделано» приложение пишет в `.md` само (`src/core/edit.ts`).
 - ⚠ на вкладке — абзацы общих правил, которые повторяются в корневом `CLAUDE.md` проекта; блок, вставленный приложением, не в счёт (`src/core/overlap.ts`). Из пары открывается и файл проекта, и `issues-rules.md` эталона.
+- Круг на вкладке — запущенные сессии Claude Code в проекте и его worktree: зелёный с числом сессий, серый — сессий нет. Приложение читает `~/.claude/sessions/<pid>.json` (формат не документирован) и проверяет, что процесс жив (`src/core/sessions.ts`, `src/main/sessions.ts`).
 - Меню в правом верхнем углу: тема светлая или тёмная. Тёмная — по дизайну `_soundproof` без неонового свечения. Выбор хранится в настройках; до выбора тема как в Windows (`nativeTheme`).
 - Окно закрывается в трей. Установленное приложение включает автозапуск с Windows один раз.
 

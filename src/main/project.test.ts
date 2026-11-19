@@ -21,7 +21,7 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('новый проект', () => {
-	it('создаёт базовые группы, правила, ссылку и скрипт', () => {
+	it('создаёт базовые группы, правила, ссылку, скрипт и хук', () => {
 		write('CLAUDE.md', '# Проект\n\nКоманды.\n');
 		createBaseGroups(root);
 		expect(syncRules(root, rules)).toEqual([]);
@@ -32,6 +32,8 @@ describe('новый проект', () => {
 		expect(read('CLAUDE.md')).toContain('@CLAUDE-ISSUES-LOCAL.md');
 		expect(read('CLAUDE-ISSUES-LOCAL.md')).toBe(rules.local);
 		expect(read('docs/issues/issues-status.mjs')).toBe(rules.script);
+		expect(read('docs/issues/issues-hook.mjs')).toBe(rules.hook);
+		expect(read('.claude/settings.json')).toContain('issues-hook.mjs');
 		expect(projectBoard(root, []).map((g) => g.key)).toEqual(['issues', 'security-issues', 'architecture-issues', 'other-issues', 'backlog']);
 	});
 

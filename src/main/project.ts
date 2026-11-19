@@ -1,11 +1,12 @@
 // Файлы проекта: базовые группы, управляемые блоки правил, доска, перенос и закрытие задач.
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { buildBoard, latestMarks, type BoardGroup, type Worktree } from '../core/board';
 import { closeCard, doneNote, moveCard } from '../core/edit';
 import { BASE_GROUPS, doneFileOf, isGroupFile, ISSUES_DIR, RESOLVED_DIR } from '../core/groups';
+import { HOOK_SCRIPT, isOwnPrePush, PRE_PUSH_SCRIPT, prePushText, SETTINGS_FILE, settingsWithHooks } from '../core/hooks';
 import { findOverlaps, type Overlap } from '../core/overlap';
 import { idsOf } from '../core/parse';
 import { blockRange, CLAUDE_FILE, claudeMdText, ISSUES_FILE, issuesFileText, LOCAL_FILE, POINTER_BLOCK, RULES_SOURCE } from '../core/rules';
@@ -21,6 +22,8 @@ export interface Rules {
 	rules: string;
 	pointer: string;
 	script: string;
+	hook: string; // скрипт хука доски
+	prePush: string; // скрипт проверки git pre-push
 	local: string; // начальный текст CLAUDE-ISSUES-LOCAL.md
 }
 
@@ -30,7 +33,7 @@ export function loadRules(dir: string): Rules {
 		if (text === null) throw new Error(`Нет файла эталона ${path.join(dir, f)}`);
 		return text;
 	};
-	return { rules: read(RULES_SOURCE), pointer: read('pointer.md'), script: read(SCRIPT_FILE), local: read('local.md') };
+	return { rules: read(RULES_SOURCE), pointer: read('pointer.md'), script: read(SCRIPT_FILE), hook: read(HOOK_SCRIPT), prePush: read(PRE_PUSH_SCRIPT), local: read('local.md') };
 }
 
 // Недостающие файлы базового набора групп. Существующие файлы задач не трогаются.
@@ -41,7 +44,7 @@ export function createBaseGroups(root: string) {
 	}
 }
 
-// Блок общих правил в CLAUDE-ISSUES.md, ссылка в CLAUDE.md и скрипт отметок. Возвращает ошибки.
+// Блок общих правил в CLAUDE-ISSUES.md, ссылка в CLAUDE.md, скрипты, хук в .claude/settings.json и git pre-push. Возвращает ошибки.
 export function syncRules(root: string, rules: Rules): string[] {
 	const errors: string[] = [];
 	const sync = (file: string, make: (old: string | null) => string) => {
@@ -54,6 +57,14 @@ export function syncRules(root: string, rules: Rules): string[] {
 	sync(ISSUES_FILE, (old) => issuesFileText(old, rules.rules));
 	sync(CLAUDE_FILE, (old) => claudeMdText(old, rules.pointer));
 	sync(path.join(ISSUES_DIR, SCRIPT_FILE), () => rules.script);
+	sync(path.join(ISSUES_DIR, HOOK_SCRIPT), () => rules.hook);
+	sync(SETTINGS_FILE, settingsWithHooks);
+	sync(path.join(ISSUES_DIR, PRE_PUSH_SCRIPT), () => rules.prePush);
+	try {
+		syncPrePush(root);
+	} catch (e) {
+		errors.push(`pre-push: ${(e as Error).message}`);
+	}
 	sync(LOCAL_FILE, (old) => old ?? rules.local); // правила проекта: только создать, если файла нет
 	return errors;
 }
@@ -107,6 +118,21 @@ function gitTopOf(root: string): string | null {
 		if (fs.existsSync(path.join(dir, '.git'))) return dir;
 		if (path.dirname(dir) === dir) return null;
 	}
+}
+
+// git pre-push репозитория проекта. Чужой хук и свой путь хуков (core.hooksPath, например husky) не трогаются: ошибка на вкладке.
+// --git-path hooks уже учитывает core.hooksPath: путь не в .git/hooks — путь хуков свой.
+function syncPrePush(root: string) {
+	if (!gitTopOf(root)) return;
+	const out = execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--git-path', 'hooks'], { encoding: 'utf8', windowsHide: true });
+	const [gitDir = '', hooksDir = ''] = out.trim().split(/\r?\n/);
+	const skip = 'проверка задач перед push не установлена';
+	if (!samePath(hooksDir, path.join(gitDir, 'hooks'))) throw new Error(`в репозитории свой путь хуков core.hooksPath (${hooksDir}), ${skip}`);
+	const file = path.join(hooksDir, 'pre-push');
+	const old = readText(file);
+	if (old !== null && !isOwnPrePush(old)) throw new Error(`в репозитории свой хук ${file}, ${skip}`);
+	writeIfChanged(file, prePushText(path.join(root, ISSUES_DIR, PRE_PUSH_SCRIPT)));
+	fs.chmodSync(file, 0o755);
 }
 
 // Другие рабочие копии репозитория проекта (git worktree). Проект может быть подпапкой репозитория:

@@ -1,6 +1,7 @@
 // Обмен между основным процессом и окном: состояние приложения и действия окна.
 import type { BoardGroup } from '../core/board';
 import type { Overlap } from '../core/overlap';
+import type { Session } from '../core/sessions';
 
 export interface ProjectView {
 	path: string;
@@ -8,6 +9,7 @@ export interface ProjectView {
 	groups: BoardGroup[];
 	overlaps: Overlap[]; // ещё не отмеченные «Проверено»
 	notices: string[]; // ошибки чтения и синхронизации правил
+	sessions: Session[]; // запущенные сессии Claude Code в проекте и его worktree
 }
 
 export interface AppState {

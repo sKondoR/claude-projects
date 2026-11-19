@@ -5,6 +5,7 @@
 	import { ISSUES_DIR } from '../../core/groups';
 	import { DIFFICULTIES, RISK_LABELS } from '../../core/labels';
 	import { RULES_SOURCE } from '../../core/rules';
+	import type { Session } from '../../core/sessions';
 	import type { AppState } from '../../shared/api';
 	import Card from './Card.svelte';
 	import Menu from './Menu.svelte';
@@ -89,6 +90,13 @@
 
 	const plural = (n: number, one: string, few: string, many: string) =>
 		n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many;
+
+	// Подсказка к кругу сессий на вкладке: имя, статус и папка каждой сессии. Незнакомый статус — как есть.
+	const STATUS: Record<string, string> = { busy: 'работает', idle: 'ждёт ввода' };
+	const sessionsTitle = (list: Session[]) =>
+		list.length
+			? ['Сессии Claude Code:', ...list.map((s) => `${s.name} — ${STATUS[s.status] ?? (s.status || 'статус неизвестен')} — ${s.cwd}`)].join('\n')
+			: 'Сессий Claude Code нет';
 </script>
 
 <svelte:document onclick={onLinkClick} />
@@ -96,6 +104,7 @@
 <nav class="tabs">
 	{#each app.projects as p (p.path)}
 		<div class="tab" class:active={p.path === project?.path} title={p.path}>
+			<span class="sessions" class:on={p.sessions.length} title={sessionsTitle(p.sessions)}>{p.sessions.length || ''}</span>
 			<button class="name" onclick={() => api.setActive(p.path)}>{p.name}</button>
 			{#if p.overlaps.length}
 				<button

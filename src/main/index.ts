@@ -6,6 +6,7 @@ import icon from '../../resources/icon.png?asset';
 import { DOCS_DIR, isTaskDocsPath } from '../core/groups';
 import { isViewable, resolveLink } from '../core/links';
 import { CLAUDE_FILE, ISSUES_FILE, RULES_SOURCE } from '../core/rules';
+import { sessionsIn, type Session } from '../core/sessions';
 import type { WorktreeRef } from '../core/worktrees';
 import type { AppState, ProjectView } from '../shared/api';
 import {
@@ -20,6 +21,7 @@ import {
 	syncRules,
 	type Rules,
 } from './project';
+import { readSessions, SESSIONS_DIR } from './sessions';
 import { loadSettings, saveSettings, type Settings } from './store';
 import { watch } from './watch';
 
@@ -28,8 +30,11 @@ import { watch } from './watch';
 declare const __RULES_DIR__: string;
 const WORKTREE_REFRESH_MS = 60_000;
 const RULES_DIR_CHECK_MS = 60_000;
+// Сессия, которая упала и не удалила свой файл, не даёт события слежения: живые процессы сверяются раз в 15 с.
+const SESSIONS_CHECK_MS = 15_000;
 
 let settings: Settings;
+let sessions: Session[] = [];
 let rules: Rules | null = null;
 let rulesError: string | null = null;
 let win: BrowserWindow | null = null;
@@ -37,7 +42,7 @@ let quitting = false;
 
 interface Live {
 	worktrees: WorktreeRef[];
-	view: ProjectView | null; // null — доска ещё не прочитана
+	view: Omit<ProjectView, 'sessions'> | null; // null — доска ещё не прочитана; сессии добавляет state()
 	unwatch: () => void;
 	notices: string[]; // ошибки синхронизации правил
 }
@@ -58,9 +63,30 @@ function refresh(root: string) {
 	push();
 }
 
+// Сессии меняют статус часто: доски не перечитываются, в окно уходит только новое состояние.
+function updateSessions() {
+	const next = readSessions();
+	if (JSON.stringify(next) === JSON.stringify(sessions)) return;
+	sessions = next;
+	push();
+}
+
+// Слежение за папкой сессий ставится, когда папка есть: до первого запуска Claude Code её нет.
+let sessionsWatched = false;
+function watchSessions() {
+	if (sessionsWatched || !fs.existsSync(SESSIONS_DIR)) return;
+	sessionsWatched = true;
+	watch([{ dir: SESSIONS_DIR, recursive: false, accept: (f) => f.endsWith('.json') }], updateSessions);
+}
+
 function state(): AppState {
+	const projects: ProjectView[] = [];
+	for (const root of settings.projects) {
+		const p = live.get(root);
+		if (p?.view) projects.push({ ...p.view, sessions: sessionsIn([root, ...p.worktrees.map((w) => w.path)], sessions) });
+	}
 	return {
-		projects: settings.projects.map((r) => live.get(r)?.view).filter((v) => !!v),
+		projects,
 		active: settings.active,
 		rulesDir: settings.rulesDir,
 	};
@@ -144,7 +170,7 @@ function createWindow(show: boolean) {
 		height: 900,
 		show: false,
 		autoHideMenuBar: true,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? '#0c0e11' : '#f7f6f2', // --bg тем из app.css до первой отрисовки: окно не мигает
+		backgroundColor: nativeTheme.shouldUseDarkColors ? '#191e24' : '#f7f6f2', // --bg тем из app.css до первой отрисовки: окно не мигает
 		title: 'Claude Projects',
 		icon,
 		webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true },
@@ -289,7 +315,13 @@ else {
 		createWindow(!process.argv.includes('--hidden'));
 		createTray();
 		syncRulesDir(true);
+		sessions = readSessions();
 		for (const root of settings.projects) openProject(root);
+		watchSessions();
+		setInterval(() => {
+			watchSessions();
+			updateSessions();
+		}, SESSIONS_CHECK_MS);
 		setInterval(() => settings.projects.forEach((r) => void updateWorktrees(r)), WORKTREE_REFRESH_MS);
 		setInterval(() => syncRulesDir(false), RULES_DIR_CHECK_MS);
 	});
