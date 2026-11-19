@@ -10,3 +10,6 @@ dist/
 *.pem
 *.key
 *.pfx
+
+# Отметки доски задач
+docs/issues/status.json
