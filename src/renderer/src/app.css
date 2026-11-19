@@ -60,6 +60,7 @@ h1 { font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-heig
 .seg button { font-size: 13px; color: var(--muted); background: var(--surface); border: 0; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed='true'] { background: var(--on); color: var(--on-ink); }
+.search { font: inherit; font-size: 13px; width: 200px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 5px 10px; }
 .legend { width: 100%; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend .bar { display: inline-block; width: 6px; height: 14px; border-radius: 2px; }
@@ -165,9 +166,11 @@ h1 { font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-heig
 .details li { margin: 2px 0; }
 .details a, .ask a { color: var(--accent); overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 10px; color: var(--muted); font-size: 12.5px; }
-.actions label { display: flex; gap: 8px; align-items: center; }
+.actions label { display: flex; gap: 8px; align-items: center; margin-right: auto; }
 .actions select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 2px 6px; }
-.actions .done-btn { margin-left: auto; color: #fff; background: var(--done); border: 0; border-radius: var(--r-sm); padding: 4px 12px; cursor: pointer; }
+.actions .done-btn { color: #fff; background: var(--done); border: 0; border-radius: var(--r-sm); padding: 4px 12px; cursor: pointer; }
+.actions .launch-btn { color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 3px 12px; cursor: pointer; }
+.actions .launch-btn:disabled { color: var(--muted); opacity: 0.6; cursor: default; }
 
 @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 80%, 100% { box-shadow: 0 0 0 8px transparent; } }
 @media (prefers-reduced-motion: reduce) { .mark.work i, .mark.check i { animation: none; } }

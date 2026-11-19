@@ -4,7 +4,9 @@
 	import type { BoardCard, BoardGroup } from '../../core/board';
 	import { ISSUES_DIR } from '../../core/groups';
 	import { DIFFICULTIES, RISK_LABELS } from '../../core/labels';
+	import { launchWarnings } from '../../core/launch';
 	import { RULES_SOURCE } from '../../core/rules';
+	import { matchesQuery } from '../../core/search';
 	import type { Session } from '../../core/sessions';
 	import type { AppState } from '../../shared/api';
 	import Card from './Card.svelte';
@@ -36,6 +38,7 @@
 	let stage = $state(saved('issues-stage', ''));
 	let folds = $state<Record<string, Record<string, boolean>>>(saved('issues-fold', {}));
 	const opened = new SvelteSet<string>();
+	const launching = new SvelteSet<string>();
 	let errors = $state<string[]>([]);
 	let showOverlaps = $state(false);
 	let dragged = $state<string | null>(null);
@@ -59,7 +62,24 @@
 	const stages = $derived([...new Set(cards.map((c) => c.stage).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })));
 	// Этапа из фильтра нет в этом проекте — фильтр не действует; в проекте с этим этапом он снова работает.
 	const activeStage = $derived(stages.includes(stage) ? stage : '');
-	const shown = (c: BoardCard) => (!difficulty || c.difficulty === difficulty) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage);
+	// Поиск не запоминается: смена вкладки и Esc очищают поле, Ctrl+F ставит в него курсор.
+	let query = $state('');
+	let searchEl = $state<HTMLInputElement>();
+	// Строка пути, а не project: project меняется при каждом обновлении файлов, и поле очищалось бы само.
+	const activePath = $derived(project?.path);
+	$effect(() => {
+		void activePath;
+		query = '';
+	});
+	function onKey(e: KeyboardEvent) {
+		if (e.ctrlKey && e.code === 'KeyF' && searchEl) {
+			e.preventDefault();
+			searchEl.focus();
+			searchEl.select();
+		}
+	}
+	const shown = (c: BoardCard) =>
+		(!difficulty || c.difficulty === difficulty) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage) && matchesQuery(c, query);
 
 	async function act(run: Promise<string | null>) {
 		const error = await run;
@@ -68,6 +88,14 @@
 	const move = (id: string, to: string) => project && act(api.move(project.path, id, to));
 	function done(c: BoardCard) {
 		if (project && confirm(`Закрыть задачу?\n\n${c.id} · ${c.title}\n\nОна уйдёт в docs/resolved с пометкой «Сделано».`)) void act(api.close(project.path, c.id));
+	}
+	async function launch(c: BoardCard) {
+		if (!project || launching.has(c.id)) return;
+		const warnings = launchWarnings(c);
+		if (warnings.length && !confirm(`Начать задачу?\n\n${c.id} · ${c.title}\n\n${warnings.join('\n')}`)) return;
+		launching.add(c.id);
+		await act(api.launch(project.path, c.id));
+		launching.delete(c.id);
 	}
 	function removeProject(path: string, name: string) {
 		if (confirm(`Убрать проект «${name}» из приложения?\n\nФайлы проекта останутся как есть.`)) void api.removeProject(path);
@@ -100,6 +128,7 @@
 </script>
 
 <svelte:document onclick={onLinkClick} />
+<svelte:window onkeydown={onKey} />
 
 <nav class="tabs">
 	{#each app.projects as p (p.path)}
@@ -136,6 +165,15 @@
 		<h1>{project.name}</h1>
 		<p class="summary">{cards.filter(shown).length} из {cards.length} задач</p>
 		<div class="filters">
+			<input
+				class="search"
+				type="search"
+				placeholder="Поиск (Ctrl+F)"
+				aria-label="Поиск по задачам"
+				bind:this={searchEl}
+				bind:value={query}
+				onkeydown={(e) => e.key === 'Escape' && (query = '')}
+			/>
 			<div class="seg" role="group" aria-label="Этап">
 				{#each ['', ...stages] as s (s)}
 					<button aria-pressed={s === activeStage} onclick={() => save('issues-stage', (stage = s))}>{s ? `Этап ${s}` : 'Все'}</button>
@@ -238,6 +276,8 @@
 							onToggle={() => (opened.has(c.id) ? opened.delete(c.id) : opened.add(c.id))}
 							onMove={(to) => move(c.id, to)}
 							onDone={() => done(c)}
+							launching={launching.has(c.id)}
+							onLaunch={() => launch(c)}
 							onDep={goToDep}
 							onDragStart={() => (dragged = c.id)}
 							onDragEnd={() => (dragged = over = null)}

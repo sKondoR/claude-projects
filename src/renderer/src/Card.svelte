@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { BoardCard, BoardGroup } from '../../core/board';
 	import { inline, markdown } from '../../core/markdown';
-	import { DIFFICULTIES, ownerLabel, RISK_LABELS } from '../../core/labels';
-	import type { MarkStatus } from '../../core/types';
+	import { DIFFICULTIES, MARKS, ownerLabel, RISK_LABELS, taskTitle } from '../../core/labels';
+	import { launchBlock } from '../../core/launch';
 	import Steps from './Steps.svelte';
 
 	interface Props {
@@ -13,21 +13,21 @@
 		dragging: boolean;
 		onToggle: () => void;
 		onMove: (to: string) => void;
+		launching: boolean; // запуск уже идёт: второй клик не откроет вторую сессию
 		onDone: () => void;
+		onLaunch: () => void;
 		onDep: (id: string) => void;
 		onDragStart: () => void;
 		onDragEnd: () => void;
 	}
-	let { card, groups, open, flash, dragging, onToggle, onMove, onDone, onDep, onDragStart, onDragEnd }: Props = $props();
+	let { card, groups, open, flash, dragging, onToggle, onMove, launching, onDone, onLaunch, onDep, onDragStart, onDragEnd }: Props = $props();
 
 	const PRI: Record<string, string> = { Высокая: 'p-hi', Средняя: 'p-mid' };
-	// Отметка сессии: класс плашки и подпись.
-	const MARKS: Record<MarkStatus, [string, string]> = { work: ['work', 'в работе'], simplify: ['check', 'simplify'], review: ['check', 'code review'], pr: ['pr', 'PR'] };
 
 	let copied = $state(false);
 	let askCopied = $state(false);
 
-	const titleText = $derived(`${card.id} · ${card.title.replaceAll('`', '')}`);
+	const titleText = $derived(taskTitle(card));
 	// Неверный или пустой риск — красная плашка, подсказка из предупреждений разбора.
 	const riskLabel = $derived(RISK_LABELS[card.risk ?? '']);
 	const mark = $derived(card.status && MARKS[card.status.status]);
@@ -37,6 +37,7 @@
 	const prNumber = $derived(/\/pull\/(\d+)/.exec(prUrl ?? '')?.[1]);
 	const editable = $derived(!card.branch);
 	const info = $derived([card.section, card.found && `Найдено: ${card.found}`].filter(Boolean).join(' · '));
+	const block = $derived(launchBlock(card));
 
 	function copy(text: string, set: (v: boolean) => void) {
 		void window.api.copy(text).then(() => {
@@ -137,6 +138,9 @@
 							{#each groups as g (g.key)}<option value={g.key}>{g.title}</option>{/each}
 						</select>
 					</label>
+					<button class="launch-btn" disabled={!!block || launching} title={block ?? 'Открыть вкладку Windows Terminal и запустить Claude по задаче'} onclick={onLaunch}
+						>В работу</button
+					>
 					<button class="done-btn" onclick={onDone}>Сделано</button>
 				</div>
 			{/if}

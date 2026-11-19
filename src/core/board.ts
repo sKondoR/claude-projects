@@ -30,7 +30,7 @@ export interface BoardInput {
 	worktrees: Worktree[];
 }
 
-const toBoardCard = (c: Card): BoardCard => ({ ...c, depStates: [], status: null, branch: null, closedIn: null });
+export const toBoardCard = (c: Card): BoardCard => ({ ...c, depStates: [], status: null, branch: null, closedIn: null });
 const column = (g: MdFile): BoardGroup => ({ key: keyOf(g.file), file: g.file, title: titleOf(g.text, g.file), cards: [] });
 
 // Самая поздняя отметка каждой задачи: у каждой рабочей копии свой status.json.

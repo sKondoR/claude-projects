@@ -32,5 +32,6 @@ export interface Api {
 	openRules(): Promise<void>; // файл общих правил в папке эталона — в программе Windows
 	setTheme(dark: boolean): Promise<void>;
 	copy(text: string): Promise<void>;
+	launch(path: string, id: string): Promise<string | null>; // вкладка Windows Terminal с claude по задаче; текст ошибки или null
 	onState(cb: (state: AppState) => void): () => void;
 }

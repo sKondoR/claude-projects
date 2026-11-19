@@ -14,6 +14,7 @@ const api: Api = {
 	openRules: () => ipcRenderer.invoke('openRules'),
 	setTheme: (dark) => ipcRenderer.invoke('setTheme', dark),
 	copy: (text) => ipcRenderer.invoke('copy', text),
+	launch: (path, id) => ipcRenderer.invoke('launch', path, id),
 	onState: (cb) => {
 		const listener = (_e: unknown, state: AppState) => cb(state);
 		ipcRenderer.on('state', listener);

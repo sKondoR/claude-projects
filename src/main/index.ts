@@ -1,9 +1,11 @@
 // Основной процесс: окно, трей, автозапуск, проекты и слежение за их файлами.
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
 import icon from '../../resources/icon.png?asset';
 import { DOCS_DIR, isTaskDocsPath } from '../core/groups';
+import { launchBlock, launchPrompt, wtArgs } from '../core/launch';
 import { isViewable, resolveLink } from '../core/links';
 import { CLAUDE_FILE, ISSUES_FILE, RULES_SOURCE } from '../core/rules';
 import { sessionsIn, type Session } from '../core/sessions';
@@ -287,6 +289,19 @@ function ipc() {
 		saveSettings(settings);
 	});
 	ipcMain.handle('copy', (_e, text: string) => clipboard.writeText(text));
+	// Задачу берём из прочитанной доски, а не из окна: в терминал уходит только текст из файлов проекта.
+	ipcMain.handle('launch', async (_e, root: string, id: string): Promise<string | null> => {
+		const card = live.get(root)?.view?.groups.flatMap((g) => g.cards).find((c) => c.id === id);
+		if (!card) return 'Нет такой задачи';
+		const block = launchBlock(card);
+		if (block) return block;
+		const child = spawn('wt.exe', wtArgs(root, launchPrompt(card)), { detached: true, stdio: 'ignore' });
+		child.unref();
+		return new Promise((resolve) => {
+			child.on('spawn', () => resolve(null));
+			child.on('error', (e) => resolve(`Не удалось запустить Windows Terminal: ${e.message}`));
+		});
+	});
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
