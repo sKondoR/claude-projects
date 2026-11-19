@@ -15,6 +15,7 @@ import {
 	closeTask,
 	createBaseGroups,
 	dropPrMarks,
+	headWithin,
 	listWorktrees,
 	loadRules,
 	moveTask,
@@ -25,7 +26,7 @@ import {
 	syncRules,
 	type Rules,
 } from './project';
-import { branchPrState, prState } from './github';
+import { branchPr, prState } from './github';
 import { readSessions, SESSIONS_DIR } from './sessions';
 import { loadSettings, saveSettings, type Settings } from './store';
 import { watch } from './watch';
@@ -51,14 +52,18 @@ interface Live {
 	view: Omit<ProjectView, 'sessions'> | null; // null — доска ещё не прочитана; сессии добавляет state()
 	unwatch: () => void;
 	notices: string[]; // ошибки синхронизации правил
-	merged: string[]; // worktree, чей PR влит
+	merged: string[]; // пути worktree, чей PR влит, а коммиты все вошли в PR
 }
 const live = new Map<string, Live>();
 
 function refresh(root: string) {
 	const p = live.get(root);
 	if (!p) return;
-	const notices = [...(rulesError ? [rulesError] : []), ...p.notices, ...p.merged];
+	// Строки только для worktree, которые ещё есть: удалённый worktree уходит с вкладки со списком worktree, без ожидания gh.
+	const merged = p.worktrees
+		.filter((w) => p.merged.includes(w.path))
+		.map((w) => `Worktree ${w.path}: PR ветки ${w.branch} влит, папку можно удалить: git worktree remove "${w.path}"`);
+	const notices = [...(rulesError ? [rulesError] : []), ...p.notices, ...merged];
 	let groups: ProjectView['groups'] = [];
 	try {
 		groups = projectBoard(root, p.worktrees);
@@ -130,14 +135,14 @@ async function checkPrs(root: string) {
 	const urls = prUrls(root, p.worktrees);
 	const worktrees = p.worktrees;
 	// Запросы независимы: идут одновременно.
-	const [urlStates, branchStates] = await Promise.all([
-		Promise.all(urls.map((url) => prState(root, url))),
-		Promise.all(worktrees.map((w) => branchPrState(root, w.branch))),
-	]);
+	// Ветку с тем же именем могли продолжить после слияния: удалить можно, только если в worktree нет коммитов сверх PR.
+	const removable = async (w: WorktreeRef) => {
+		const pr = await branchPr(root, w.branch);
+		return pr?.state === 'MERGED' && (await headWithin(w.path, pr.head));
+	};
+	const [urlStates, removables] = await Promise.all([Promise.all(urls.map((url) => prState(root, url))), Promise.all(worktrees.map(removable))]);
 	const done = new Set(urls.filter((_, i) => urlStates[i] === 'MERGED' || urlStates[i] === 'CLOSED'));
-	const merged = worktrees
-		.filter((_, i) => branchStates[i] === 'MERGED')
-		.map((w) => `Worktree ${w.path}: PR ветки ${w.branch} влит, папку можно удалить: git worktree remove "${w.path}"`);
+	const merged = worktrees.filter((_, i) => removables[i]).map((w) => w.path);
 	if (live.get(root) !== p) return; // проект убрали, пока шли запросы
 	const dropped = done.size > 0 && dropPrMarks(root, p.worktrees, done);
 	if (!dropped && JSON.stringify(merged) === JSON.stringify(p.merged)) return;

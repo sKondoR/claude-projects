@@ -122,7 +122,14 @@ function gitReposOf(root: string): string[] {
 	if (gitTopOf(root)) return [root];
 	const found: string[] = [];
 	const scan = (dir: string, depth: number) => {
-		for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+		let entries: fs.Dirent[];
+		try {
+			entries = fs.readdirSync(dir, { withFileTypes: true });
+		} catch (e) {
+			if (dir === root) throw e; // папку проекта не прочитать — ошибка на вкладке
+			return; // подпапку нельзя прочитать: остальные просматриваются
+		}
+		for (const e of entries) {
 			if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
 			const sub = path.join(dir, e.name);
 			if (fs.existsSync(path.join(sub, '.git'))) found.push(sub);
@@ -179,6 +186,16 @@ export async function listWorktrees(root: string): Promise<WorktreeRef[]> {
 			.filter((w) => !samePath(w.path, root) && fs.existsSync(w.path));
 	} catch {
 		return [];
+	}
+}
+
+// Все коммиты рабочей копии входят в коммит sha (например, последний коммит PR). Нет коммита sha локально или git не ответил — false.
+export async function headWithin(dir: string, sha: string): Promise<boolean> {
+	try {
+		await execFileAsync('git', ['-C', dir, 'merge-base', '--is-ancestor', 'HEAD', sha], { windowsHide: true });
+		return true;
+	} catch {
+		return false;
 	}
 }
 
