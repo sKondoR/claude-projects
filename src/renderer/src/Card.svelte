@@ -8,6 +8,7 @@
 	interface Props {
 		card: BoardCard;
 		groups: BoardGroup[];
+		inGraph?: boolean; // в графе нет столбцов групп: карточка подписывает группу, перетаскивать её некуда
 		open: boolean;
 		flash: boolean; // переход к карточке по зависимости
 		dragging: boolean;
@@ -20,7 +21,7 @@
 		onDragStart: () => void;
 		onDragEnd: () => void;
 	}
-	let { card, groups, open, flash, dragging, launching, onToggle, onMove, onDone, onLaunch, onDep, onDragStart, onDragEnd }: Props = $props();
+	let { card, groups, inGraph, open, flash, dragging, launching, onToggle, onMove, onDone, onLaunch, onDep, onDragStart, onDragEnd }: Props = $props();
 
 	const PRI: Record<string, string> = { Высокая: 'p-hi', Средняя: 'p-mid' };
 
@@ -53,7 +54,7 @@
 	class:dragging
 	class:flash
 	data-id={card.id}
-	draggable={!open && editable}
+	draggable={!open && editable && !inGraph}
 	title="Приоритет: {card.priority ?? 'не указан'}"
 	ondragstart={(e) => {
 		e.dataTransfer?.setData('text/plain', card.id);
@@ -64,6 +65,7 @@
 	<button class="head" aria-expanded={open} onclick={onToggle}>
 		<span class="title"><span class="id">{card.id}</span>{@html inline(card.title)}</span>
 		<span class="meta">
+			{#if inGraph}<span>{groups.find((g) => g.key === card.group)?.title}</span>{/if}
 			{#if card.difficulty}<span title="Трудность: {card.difficulty}"><Steps level={DIFFICULTIES.indexOf(card.difficulty) + 1} /></span>{/if}
 			<span class="chip risk r{riskLabel ? card.risk : 2}" title={riskLabel ?? card.warnings.join('\n')}>риск {card.risk ?? '?'}</span>
 			{#if card.stage}<span class="chip stage" title="Ждёт этапа {card.stage}: до него задачу не начать">этап {card.stage}</span>{/if}

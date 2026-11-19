@@ -96,8 +96,8 @@ h1 { font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-heig
 .board { display: grid; grid-auto-flow: column; gap: 12px; padding: 0 20px 32px; overflow-x: auto; align-items: stretch; flex: 1; }
 .col { background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg); padding: 10px; min-height: 160px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; }
 .col.over { border-color: var(--accent); border-style: dashed; }
-.col h2 { white-space: nowrap; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 4px; display: flex; gap: 8px; align-items: baseline; }
-.col h2 .n { color: var(--muted); font-weight: 400; }
+.col h2, .graph .level h2 { white-space: nowrap; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 4px; display: flex; gap: 8px; align-items: baseline; }
+.col h2 .n, .graph .level h2 .n { color: var(--muted); font-weight: 400; }
 .col h2 a { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 12px; text-decoration: none; }
 .col h2 a:hover { text-decoration: underline; }
 .fold { all: unset; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; padding: 0 2px; }
@@ -213,3 +213,14 @@ h1 { font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-heig
 .timelog li .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timelog li .title.session { color: var(--muted); font-style: italic; }
 .timelog li .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Граф зависимостей: столбцы-шаги слева направо, линии под карточками в промежутках между столбцами */
+.graph { flex: 1; overflow-x: auto; padding: 0 20px 32px; }
+.graph-wrap { position: relative; display: flex; gap: 64px; width: max-content; align-items: start; }
+.graph .edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.graph .edges path { fill: none; stroke: var(--muted); stroke-opacity: 0.55; stroke-width: 1.5; transition: stroke-opacity 0.15s; }
+.graph .edges path.on { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2; }
+.graph-wrap.focus .edges path:not(.on) { stroke-opacity: 0.15; }
+.graph .level { position: relative; width: 300px; display: grid; gap: 12px; align-content: start; }
+.graph .node { transition: opacity 0.15s; }
+.graph .node.off, .graph-wrap.focus .node:not(.near) { opacity: 0.35; }

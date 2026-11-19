@@ -1,12 +1,12 @@
 // Кнопка «В работу»: вкладка Windows Terminal в папке проекта запускает claude с номером и сутью задачи.
 import type { BoardCard } from './board';
-import { MARKS, taskTitle } from './labels';
+import { MARKS, taskTitle, waitsAnswer } from './labels';
 import type { Card } from './types';
 
 // Почему задачу не начать сейчас; null — начать можно.
 export function launchBlock(c: BoardCard): string | null {
 	if (c.branch) return `Задача есть только в ветке ${c.branch}`;
-	if (c.questions.length || c.owner) return 'Сначала нужен ответ на вопросы по задаче';
+	if (waitsAnswer(c)) return 'Сначала нужен ответ на вопросы по задаче';
 	if (c.stage) return `Задача ждёт этапа ${c.stage}`;
 	return null;
 }

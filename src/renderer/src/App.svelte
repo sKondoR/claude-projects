@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { BoardCard, BoardGroup } from '../../core/board';
+	import { buildGraph } from '../../core/graph';
 	import { ISSUES_DIR } from '../../core/groups';
 	import { DIFFICULTIES, RISK_LABELS, taskTitle } from '../../core/labels';
 	import { launchWarnings } from '../../core/launch';
@@ -10,6 +11,7 @@
 	import type { Session } from '../../core/sessions';
 	import type { AppState } from '../../shared/api';
 	import Card from './Card.svelte';
+	import Graph from './Graph.svelte';
 	import Menu from './Menu.svelte';
 	import Steps from './Steps.svelte';
 	import TimeLog from './TimeLog.svelte';
@@ -37,6 +39,7 @@
 	let difficulty = $state(saved('issues-diff', ''));
 	let ownerOnly = $state(saved('issues-owner', false));
 	let stage = $state(saved('issues-stage', ''));
+	let graphMode = $state(saved('issues-graph', false));
 	let folds = $state<Record<string, Record<string, boolean>>>(saved('issues-fold', {}));
 	const opened = new SvelteSet<string>();
 	const launching = new SvelteSet<string>();
@@ -63,6 +66,8 @@
 	}
 
 	const cards = $derived(project?.groups.flatMap((g) => g.cards) ?? []);
+	const graph = $derived(buildGraph(cards));
+	const graphCards = $derived(graph.levels.flat());
 	const stages = $derived([...new Set(cards.map((c) => c.stage).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })));
 	// Этапа из фильтра нет в этом проекте — фильтр не действует; в проекте с этим этапом он снова работает.
 	const activeStage = $derived(stages.includes(stage) ? stage : '');
@@ -85,8 +90,9 @@
 		// Esc при открытом меню закрывает только меню: popover закрывается после обработчика, поэтому здесь оно ещё открыто.
 		if (e.key === 'Escape' && showTime && !document.querySelector(':popover-open')) showTime = false;
 	}
-	const shown = (c: BoardCard) =>
-		(!difficulty || c.difficulty === difficulty) && (!ownerOnly || !!c.owner) && (!activeStage || c.stage === activeStage) && matchesQuery(c, query);
+	// В графе нет задач с вопросами владельцу, поэтому фильтр «Владелец» там не действует.
+	const matchesFilters = (c: BoardCard) => (!difficulty || c.difficulty === difficulty) && (!activeStage || c.stage === activeStage) && matchesQuery(c, query);
+	const shownOnBoard = (c: BoardCard) => matchesFilters(c) && (!ownerOnly || !!c.owner);
 
 	async function act(run: Promise<string | null>) {
 		const error = await run;
@@ -172,6 +178,17 @@
 		>Правила: {app.rulesDir}</button
 	>
 	<div class="corner">
+		<button
+			class="icon-btn"
+			title="Граф зависимостей: задачи без вопросов к владельцу и без бэклога по шагам"
+			aria-label="Граф зависимостей"
+			aria-pressed={graphMode}
+			onclick={() => save('issues-graph', (graphMode = !graphMode))}
+		>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"
+				><circle cx="3.5" cy="4" r="1.8" /><circle cx="3.5" cy="12" r="1.8" /><circle cx="12.5" cy="8" r="1.8" /><path d="M5.3 4.6 10.8 7.4M5.3 11.4l5.5-2.8" /></svg
+			>
+		</button>
 		<button class="icon-btn" title="Время Claude Code в проекте" aria-label="Время Claude Code в проекте" aria-pressed={showTime} onclick={() => (showTime = !showTime)}>
 			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"
 				><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg
@@ -189,7 +206,13 @@
 {:else}
 	<header>
 		<h1>{project.name}</h1>
-		<p class="summary">{cards.filter(shown).length} из {cards.length} задач</p>
+		{#if graphMode}
+			<p class="summary">
+				{graphCards.filter(matchesFilters).length} из {graphCards.length} задач в графе{#if graph.hidden}&nbsp;· скрыто {graph.hidden}: ждут ответа на вопросы или в бэклоге, сами или через зависимость{/if}
+			</p>
+		{:else}
+			<p class="summary">{cards.filter(shownOnBoard).length} из {cards.length} задач</p>
+		{/if}
 		<div class="filters">
 			<input
 				class="search"
@@ -205,11 +228,13 @@
 					<button aria-pressed={s === activeStage} onclick={() => save('issues-stage', (stage = s))}>{s ? `Этап ${s}` : 'Все'}</button>
 				{/each}
 			</div>
-			<div class="seg" role="group" aria-label="Владелец">
-				{#each [false, true] as v (v)}
-					<button aria-pressed={v === ownerOnly} onclick={() => save('issues-owner', (ownerOnly = v))}>{v ? 'Владелец' : 'Все'}</button>
-				{/each}
-			</div>
+			{#if !graphMode}
+				<div class="seg" role="group" aria-label="Владелец">
+					{#each [false, true] as v (v)}
+						<button aria-pressed={v === ownerOnly} onclick={() => save('issues-owner', (ownerOnly = v))}>{v ? 'Владелец' : 'Все'}</button>
+					{/each}
+				</div>
+			{/if}
 			<div class="seg" role="group" aria-label="Трудность">
 				{#each ['', ...DIFFICULTIES] as d, i (d)}
 					<button aria-pressed={d === difficulty} onclick={() => save('issues-diff', (difficulty = d))}>{#if d}<Steps level={i} />{/if}{d || 'Все'}</button>
@@ -225,7 +250,11 @@
 			<i class="sep"></i><span>Риск:</span>
 			<span class="keys">{#each Object.entries(RISK_LABELS) as [r, label] (r)}<span class="chip risk r{r}" title={label}>{r}</span>{/each}</span>
 			<i class="sep"></i><span><span class="chip stage">этап N</span>ждёт этапа N</span>
-			<i class="sep"></i><span>Перетащите карточку в другую группу, чтобы перенести задачу</span>
+			<i class="sep"></i><span
+				>{graphMode
+					? 'Линия ведёт от задачи к задачам, которые от неё зависят. Наведите на карточку, чтобы выделить её цепочку'
+					: 'Перетащите карточку в другую группу, чтобы перенести задачу'}</span
+			>
 		</div>
 	</header>
 
@@ -267,60 +296,69 @@
 		</section>
 	{/if}
 
-	<main class="board" style:grid-template-columns={project.groups.map((g) => (isFolded(g) ? '44px' : 'minmax(240px, 1fr)')).join(' ')}>
-		{#each project.groups as g (g.key)}
-			{@const list = g.cards.filter(shown)}
-			<section
-				class="col"
-				class:folded={isFolded(g)}
-				class:over={over === g.key}
-				aria-label={g.title}
-				ondragover={(e) => {
-					if (!dragged) return;
-					e.preventDefault();
-					over = g.key;
-				}}
-				ondragleave={() => over === g.key && (over = null)}
-				ondrop={(e) => {
-					e.preventDefault();
-					if (dragged) void move(dragged, g.key);
-					dragged = over = null;
-				}}
-			>
-				{#if isFolded(g)}
-					<h2>
-						<button class="fold" title="Развернуть «{g.title}»" onclick={() => setFold(g.key, false)}>›</button>{g.title}
-						<span class="n">{list.length}</span>
-					</h2>
-				{:else}
-					<h2>
-						{g.title} <span class="n">{list.length}</span><a href={g.file}>{g.file}</a><button class="fold" title="Свернуть" onclick={() => setFold(g.key, true)}
-							>‹</button
-						>
-					</h2>
-					{#each list as c (c.id)}
-						<Card
-							card={c}
-							flash={flash === c.id}
-							dragging={dragged === c.id}
-							groups={project.groups}
-							open={opened.has(c.id)}
-							onToggle={() => (opened.has(c.id) ? opened.delete(c.id) : opened.add(c.id))}
-							onMove={(to) => move(c.id, to)}
-							onDone={() => done(c)}
-							launching={launching.has(c.id)}
-							onLaunch={() => launch(c)}
-							onDep={goToDep}
-							onDragStart={() => (dragged = c.id)}
-							onDragEnd={() => (dragged = over = null)}
-						/>
+	{#snippet cardView(c: BoardCard)}
+		<Card
+			card={c}
+			flash={flash === c.id}
+			dragging={dragged === c.id}
+			groups={project.groups}
+			inGraph={graphMode}
+			open={opened.has(c.id)}
+			onToggle={() => (opened.has(c.id) ? opened.delete(c.id) : opened.add(c.id))}
+			onMove={(to) => move(c.id, to)}
+			onDone={() => done(c)}
+			launching={launching.has(c.id)}
+			onLaunch={() => launch(c)}
+			onDep={goToDep}
+			onDragStart={() => (dragged = c.id)}
+			onDragEnd={() => (dragged = over = null)}
+		/>
+	{/snippet}
+
+	{#if graphMode}
+		<Graph {graph} shown={matchesFilters} item={cardView} />
+	{:else}
+		<main class="board" style:grid-template-columns={project.groups.map((g) => (isFolded(g) ? '44px' : 'minmax(240px, 1fr)')).join(' ')}>
+			{#each project.groups as g (g.key)}
+				{@const list = g.cards.filter(shownOnBoard)}
+				<section
+					class="col"
+					class:folded={isFolded(g)}
+					class:over={over === g.key}
+					aria-label={g.title}
+					ondragover={(e) => {
+						if (!dragged) return;
+						e.preventDefault();
+						over = g.key;
+					}}
+					ondragleave={() => over === g.key && (over = null)}
+					ondrop={(e) => {
+						e.preventDefault();
+						if (dragged) void move(dragged, g.key);
+						dragged = over = null;
+					}}
+				>
+					{#if isFolded(g)}
+						<h2>
+							<button class="fold" title="Развернуть «{g.title}»" onclick={() => setFold(g.key, false)}>›</button>{g.title}
+							<span class="n">{list.length}</span>
+						</h2>
 					{:else}
-						<p class="empty">Нет задач</p>
-					{/each}
-				{/if}
-			</section>
-		{/each}
-	</main>
+						<h2>
+							{g.title} <span class="n">{list.length}</span><a href={g.file}>{g.file}</a><button class="fold" title="Свернуть" onclick={() => setFold(g.key, true)}
+								>‹</button
+							>
+						</h2>
+						{#each list as c (c.id)}
+							{@render cardView(c)}
+						{:else}
+							<p class="empty">Нет задач</p>
+						{/each}
+					{/if}
+				</section>
+			{/each}
+		</main>
+	{/if}
 	{#if showTime}
 		<TimeLog root={project.path} name={project.name} top={tabsHeight} onClose={() => (showTime = false)} />
 	{/if}

@@ -25,6 +25,7 @@ const BASE_ORDER = BASE_GROUPS.map((g) => g.file).filter((f) => f !== BACKLOG);
 export const isGroupFile = (file: string) => file.endsWith('.md') && file !== CLAUDE_FILE;
 
 export const keyOf = (file: string) => file.replace(/\.md$/, '');
+export const isBacklog = (group: string) => group === keyOf(BACKLOG);
 
 // Базовые по порядку набора, затем прочие по алфавиту, бэклог последним.
 const rank = (f: string) => (f === BACKLOG ? Infinity : BASE_ORDER.includes(f) ? BASE_ORDER.indexOf(f) : BASE_ORDER.length);
